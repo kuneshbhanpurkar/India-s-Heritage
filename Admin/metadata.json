@@ -1,0 +1,6 @@
+{
+  "name": "Dharohar - National Heritage Portal",
+  "description": "National Heritage Surveillance & Monitoring Portal administrative dashboard for monument records, visuals, documentation, and jurisdiction governance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

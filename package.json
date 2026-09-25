@@ -1,0 +1,14 @@
+{
+  "name": "dharohar-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dharohar Cultural Heritage Portal Workspace",
+  "scripts": {
+    "start:backend": "npm --prefix backend start",
+    "start:website": "npm --prefix Website run dev",
+    "start:admin": "npm --prefix Admin run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:website": "npm --prefix Website run dev",
+    "dev:admin": "npm --prefix Admin run dev"
+  }
+}

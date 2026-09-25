@@ -1,0 +1,6 @@
+{
+  "name": "Indian Heritage",
+  "description": "Discover, Experience, Reward, and Preserve India's Cultural Heritage, Protected Monuments, and Living Traditions.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

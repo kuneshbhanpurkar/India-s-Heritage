@@ -1,0 +1,141 @@
+import 'dotenv/config';
+import bcrypt from 'bcryptjs';
+import cors from 'cors';
+import express from 'express';
+import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
+import { z } from 'zod';
+
+const app = express();
+const { Schema, model } = mongoose;
+const allowedOrigins = (process.env.CLIENT_ORIGINS || '').split(',').filter(Boolean);
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : true }));
+app.use(express.json({ limit: '2mb' }));
+
+const stateSchema = new Schema({ name: { type: String, required: true, unique: true, trim: true }, code: { type: String, required: true, unique: true, uppercase: true }, active: { type: Boolean, default: false } }, { timestamps: true });
+const districtSchema = new Schema({ stateId: { type: Schema.Types.ObjectId, ref: 'State', required: true, index: true }, name: { type: String, required: true, trim: true }, active: { type: Boolean, default: false }, coverImage: String, description: String, coordinates: { lat: Number, lng: Number } }, { timestamps: true });
+districtSchema.index({ stateId: 1, name: 1 }, { unique: true });
+const categorySchema = new Schema({ name: { type: String, required: true, unique: true, trim: true }, slug: { type: String, required: true, unique: true }, description: String, active: { type: Boolean, default: true } }, { timestamps: true });
+const districtCategorySchema = new Schema({ districtId: { type: Schema.Types.ObjectId, ref: 'District', required: true }, categoryId: { type: Schema.Types.ObjectId, ref: 'Category', required: true }, enabled: { type: Boolean, default: false }, featured: { type: Boolean, default: false }, fields: [{ key: String, label: String, type: String, required: Boolean, order: Number }] }, { timestamps: true });
+districtCategorySchema.index({ districtId: 1, categoryId: 1 }, { unique: true });
+const geoPointSchema = new Schema({ type: { type: String, enum: ['Point'], required: true }, coordinates: { type: [Number], required: true } }, { _id: false });
+const contentSchema = new Schema({ districtId: { type: Schema.Types.ObjectId, ref: 'District', required: true, index: true }, categoryId: { type: Schema.Types.ObjectId, ref: 'Category', required: true, index: true }, title: { type: String, required: true, trim: true }, slug: { type: String, required: true, unique: true }, status: { type: String, enum: ['draft', 'review', 'published', 'hidden'], default: 'draft', index: true }, featured: { type: Boolean, default: false }, fields: { type: Schema.Types.Mixed, default: {} }, media: [{ type: { type: String }, url: String, alt: String }], location: geoPointSchema }, { timestamps: true });
+contentSchema.index({ location: '2dsphere' });
+const adminSchema = new Schema({ name: String, email: { type: String, unique: true, lowercase: true }, passwordHash: String, role: { type: String, enum: ['super_admin', 'editor', 'reviewer'], default: 'editor' }, active: { type: Boolean, default: true } }, { timestamps: true });
+const userSchema = new Schema({ name: { type: String, required: true, trim: true }, email: { type: String, unique: true, lowercase: true, trim: true }, passwordHash: { type: String, required: true }, state: String, district: String, active: { type: Boolean, default: true } }, { timestamps: true });
+const State = model('State', stateSchema); const District = model('District', districtSchema); const Category = model('Category', categorySchema); const DistrictCategory = model('DistrictCategory', districtCategorySchema); const Content = model('Content', contentSchema); const Admin = model('Admin', adminSchema);
+const User = model('User', userSchema);
+
+const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+const requireAdmin = (req, res, next) => { try { req.admin = jwt.verify((req.headers.authorization || '').replace('Bearer ', ''), process.env.JWT_SECRET); next(); } catch { res.status(401).json({ error: 'Unauthorized' }); } };
+const requireUser = (req, res, next) => { try { req.user = jwt.verify((req.headers.authorization || '').replace('Bearer ', ''), process.env.JWT_SECRET); next(); } catch { res.status(401).json({ error: 'Unauthorized' }); } };
+const slugify = (value) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+const resolveDistrictId = async (value) => mongoose.isValidObjectId(value) ? value : (await District.findOne({ name: value }))?.id;
+const resolveCategoryId = async (value) => {
+	if (mongoose.isValidObjectId(value)) return value;
+	const name = value || 'Heritage';
+	const category = await Category.findOneAndUpdate({ name }, { name, slug: slugify(name), active: true }, { upsert: true, new: true, setDefaultsOnInsert: true });
+	return category.id;
+};
+
+app.get('/health', (_, res) => res.json({ ok: true }));
+app.post('/api/auth/login', asyncRoute(async (req, res) => { const input = z.object({ email: z.string().email(), password: z.string().min(8) }).parse(req.body); const admin = await Admin.findOne({ email: input.email, active: true }); if (!admin || !await bcrypt.compare(input.password, admin.passwordHash)) return res.status(401).json({ error: 'Invalid credentials' }); const token = jwt.sign({ sub: admin.id, role: admin.role }, process.env.JWT_SECRET, { expiresIn: '8h' }); res.json({ token, admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role } }); }));
+const userProfile = (user) => ({ id: user.id, name: user.name, email: user.email, state: user.state, district: user.district });
+app.post('/api/users/login', asyncRoute(async (req, res) => { const input = z.object({ email: z.string().email(), password: z.string().min(8) }).parse(req.body); const user = await User.findOne({ email: input.email, active: true }); if (!user || !await bcrypt.compare(input.password, user.passwordHash)) return res.status(401).json({ error: 'Invalid credentials' }); const state = await State.findOne({ name: user.state, active: true }).lean(); const district = state ? await District.findOne({ stateId: state._id, name: user.district, active: true }).lean() : null; if (!state || !district) return res.status(403).json({ error: 'Your account has no active Admin-published state and district.' }); const token = jwt.sign({ sub: user.id, role: 'user' }, process.env.JWT_SECRET, { expiresIn: '30d' }); res.json({ token, user: userProfile(user) }); }));
+app.post('/api/users/register', asyncRoute(async (req, res) => { const input = z.object({ name: z.string().min(2), email: z.string().email(), password: z.string().min(8), state: z.string().min(2), district: z.string().min(2) }).parse(req.body); const state = await State.findOne({ name: input.state, active: true }).lean(); const district = state ? await District.findOne({ stateId: state._id, name: input.district, active: true }).lean() : null; if (!state || !district) return res.status(400).json({ error: 'Please select an active state and district published by the administrator.' }); const user = await User.create({ ...input, state: state.name, district: district.name, passwordHash: await bcrypt.hash(input.password, 12) }); const token = jwt.sign({ sub: user.id, role: 'user' }, process.env.JWT_SECRET, { expiresIn: '30d' }); res.status(201).json({ token, user: userProfile(user) }); }));
+app.get('/api/users/me', requireUser, asyncRoute(async (req, res) => { const user = await User.findOne({ _id: req.user.sub, active: true }).lean(); if (!user) return res.status(404).json({ error: 'User not found' }); res.json(userProfile(user)); }));
+app.put('/api/users/me', requireUser, asyncRoute(async (req, res) => { const input = z.object({ name: z.string().min(2).optional() }).parse(req.body); const user = await User.findByIdAndUpdate(req.user.sub, input, { new: true, runValidators: true }).lean(); if (!user) return res.status(404).json({ error: 'User not found' }); res.json(userProfile(user)); }));
+
+app.get('/api/public/states', asyncRoute(async (_, res) => res.json(await State.find({ active: true }).sort('name').lean())));
+app.get('/api/public/states/:stateId/districts', asyncRoute(async (req, res) => res.json(await District.find({ stateId: req.params.stateId, active: true }).sort('name').lean())));
+app.get('/api/public/districts/:districtId/categories', asyncRoute(async (req, res) => { const configs = await DistrictCategory.find({ districtId: req.params.districtId, enabled: true }).populate('categoryId').lean(); res.json(configs.filter((x) => x.categoryId?.active).map(({ categoryId, fields, featured }) => ({ ...categoryId, fields, featured }))); }));
+app.get('/api/public/content', asyncRoute(async (req, res) => { const query = { status: 'published' }; if (req.query.districtId) query.districtId = req.query.districtId; if (req.query.categoryId) query.categoryId = req.query.categoryId; res.json(await Content.find(query).sort('-featured -createdAt').lean()); }));
+app.get('/api/public/content/:slug', asyncRoute(async (req, res) => { const item = await Content.findOne({ slug: req.params.slug, status: 'published' }).lean(); if (!item) return res.status(404).json({ error: 'Not found' }); res.json(item); }));
+app.get('/api/public/nearby', asyncRoute(async (req, res) => { const { lat, lng, km = 20 } = z.object({ lat: z.coerce.number(), lng: z.coerce.number(), km: z.coerce.number().max(100) }).parse(req.query); res.json(await Content.find({ status: 'published', location: { $near: { $geometry: { type: 'Point', coordinates: [lng, lat] }, $maxDistance: km * 1000 } } }).lean()); }));
+
+app.get('/api/admin/content', requireAdmin, asyncRoute(async (req, res) => { const districtId = req.query.districtId ? await resolveDistrictId(req.query.districtId) : null; if (req.query.districtId && !districtId) return res.status(400).json({ error: 'Unknown district' }); res.json(await Content.find(districtId ? { districtId } : {}).sort('-createdAt').lean()); }));
+app.get('/api/admin/admins', requireAdmin, asyncRoute(async (_, res) => res.json(await Admin.find({}, '-passwordHash').sort('name').lean())));
+app.get('/api/admin/states', requireAdmin, asyncRoute(async (_, res) => res.json(await State.find({}, 'name code').sort('name').lean())));
+app.get('/api/admin/states/:stateId/districts', requireAdmin, asyncRoute(async (req, res) => res.json(await District.find({ stateId: req.params.stateId }, 'name stateId').sort('name').lean())));
+app.get('/api/admin/district-categories', requireAdmin, asyncRoute(async (req, res) => {
+	const query = {};
+	if (req.query.districtId) query.districtId = await resolveDistrictId(req.query.districtId);
+	if (req.query.categoryId) query.categoryId = await resolveCategoryId(req.query.categoryId);
+	res.json(await DistrictCategory.find(query).populate('categoryId', 'name slug').lean());
+}));
+app.get('/api/admin/summary', requireAdmin, asyncRoute(async (req, res) => {
+	const scopedDistrictId = req.query.districtId ? await resolveDistrictId(req.query.districtId) : null;
+	if (req.query.districtId && !scopedDistrictId) return res.status(400).json({ error: 'Unknown district' });
+	const [content, admins, users, states, districts, districtCategories, categories] = await Promise.all([
+		Content.find(scopedDistrictId ? { districtId: scopedDistrictId } : {}, 'districtId categoryId status').lean(),
+		Admin.find({}, 'role active').lean(),
+		User.countDocuments({ active: true }),
+		State.find({ active: true }, 'name code').lean(),
+		District.find({ active: true }, 'name stateId').lean(),
+		DistrictCategory.find({ enabled: true }, 'districtId categoryId').lean(),
+		Category.find({}, 'name').lean(),
+	]);
+	const stateById = new Map(states.map((state) => [String(state._id), state]));
+	const districtById = new Map(districts.map((district) => [String(district._id), district]));
+	const contentCounts = content.reduce((counts, item) => {
+		counts.total += 1;
+		counts[item.status] += 1;
+		return counts;
+	}, { total: 0, published: 0, draft: 0, review: 0, hidden: 0 });
+	const adminCounts = admins.reduce((counts, admin) => {
+		counts.total += 1;
+		if (admin.active) counts.active += 1;
+		if (admin.role === 'super_admin') counts.superAdmins += 1;
+		if (admin.role === 'editor') counts.editors += 1;
+		if (admin.role === 'reviewer') counts.reviewers += 1;
+		return counts;
+	}, { total: 0, active: 0, superAdmins: 0, editors: 0, reviewers: 0 });
+	const enabledCategoriesByDistrict = new Map();
+	districtCategories.forEach((item) => {
+		const districtId = String(item.districtId);
+		const categorySet = enabledCategoriesByDistrict.get(districtId) || new Set();
+		categorySet.add(String(item.categoryId));
+		enabledCategoriesByDistrict.set(districtId, categorySet);
+	});
+	const ledgerByDistrict = new Map();
+	content.forEach((item) => {
+		const districtId = String(item.districtId);
+		const district = districtById.get(districtId);
+		const state = district && stateById.get(String(district.stateId));
+		if (!district || !state) return;
+		const row = ledgerByDistrict.get(districtId) || { code: state.code, state: state.name, district: district.name, activeCategories: `${enabledCategoriesByDistrict.get(districtId)?.size || 0} Categories`, published: 0, draft: 0 };
+		if (item.status === 'published') row.published += 1;
+		if (item.status === 'draft') row.draft += 1;
+		ledgerByDistrict.set(districtId, row);
+	});
+	districts.forEach((district) => {
+		const districtId = String(district._id);
+		const state = stateById.get(String(district.stateId));
+		if (!state || ledgerByDistrict.has(districtId)) return;
+		ledgerByDistrict.set(districtId, { code: state.code, state: state.name, district: district.name, activeCategories: `${enabledCategoriesByDistrict.get(districtId)?.size || 0} Categories`, published: 0, draft: 0 });
+	});
+	res.json({ content: contentCounts, admins: adminCounts, users: { active: users }, coverage: { activeStates: states.length, activeDistricts: districts.length }, categories: categories.length, ledger: [...ledgerByDistrict.values()].sort((a, b) => a.state.localeCompare(b.state) || a.district.localeCompare(b.district)) });
+}));
+
+app.post('/api/admin/states', requireAdmin, asyncRoute(async (req, res) => { const input = z.object({ name: z.string().min(2), code: z.string().min(2), active: z.boolean().optional() }).parse(req.body); res.status(201).json(await State.create(input)); }));
+app.post('/api/admin/districts', requireAdmin, asyncRoute(async (req, res) => { const input = z.object({ stateId: z.string(), name: z.string().min(2), active: z.boolean().optional(), coverImage: z.string().url().optional(), description: z.string().optional(), coordinates: z.object({ lat: z.number(), lng: z.number() }).optional() }).parse(req.body); res.status(201).json(await District.create(input)); }));
+app.put('/api/admin/districts/:id', requireAdmin, asyncRoute(async (req, res) => { const input = z.object({ coverImage: z.string().url().nullable().optional(), description: z.string().optional(), active: z.boolean().optional() }).parse(req.body); const district = await District.findByIdAndUpdate(req.params.id, input, { new: true, runValidators: true }).lean(); if (!district) return res.status(404).json({ error: 'Not found' }); res.json(district); }));
+app.post('/api/admin/categories', requireAdmin, asyncRoute(async (req, res) => { const input = z.object({ name: z.string().min(2), description: z.string().optional() }).parse(req.body); res.status(201).json(await Category.create({ ...input, slug: slugify(input.name) })); }));
+app.post('/api/admin/district-categories', requireAdmin, asyncRoute(async (req, res) => { const input = z.object({ districtId: z.string(), categoryId: z.string(), enabled: z.boolean(), featured: z.boolean().optional(), fields: z.array(z.object({ key: z.string(), label: z.string(), type: z.string(), required: z.boolean().optional(), order: z.number().optional() })) }).parse(req.body); res.status(201).json(await DistrictCategory.create(input)); }));
+app.put('/api/admin/district-categories/:districtId/:categoryId', requireAdmin, asyncRoute(async (req, res) => { const input = z.object({ enabled: z.boolean(), featured: z.boolean().optional(), fields: z.array(z.object({ key: z.string(), label: z.string(), type: z.string(), required: z.boolean().optional(), order: z.number().optional() })).optional() }).parse(req.body); const districtId = await resolveDistrictId(req.params.districtId); const categoryId = await resolveCategoryId(req.params.categoryId); if (!districtId) return res.status(400).json({ error: 'Unknown district' }); res.json(await DistrictCategory.findOneAndUpdate({ districtId, categoryId }, { ...input, districtId, categoryId }, { new: true, upsert: true, runValidators: true }).populate('categoryId', 'name slug').lean()); }));
+app.post('/api/admin/content', requireAdmin, asyncRoute(async (req, res) => { const input = z.object({ districtId: z.string(), categoryId: z.string(), title: z.string().min(2), status: z.enum(['draft', 'review', 'published', 'hidden']).optional(), featured: z.boolean().optional(), fields: z.record(z.unknown()).optional(), media: z.array(z.object({ type: z.string(), url: z.string().url(), alt: z.string().optional() })).optional(), location: z.object({ lat: z.number(), lng: z.number() }).optional() }).parse(req.body); const districtId = await resolveDistrictId(input.districtId); const categoryId = await resolveCategoryId(input.categoryId); if (!districtId) return res.status(400).json({ error: 'Unknown district' }); const slug = `${slugify(input.title)}-${Date.now()}`; const location = input.location ? { type: 'Point', coordinates: [input.location.lng, input.location.lat] } : undefined; res.status(201).json(await Content.create({ ...input, districtId, categoryId, slug, location })); }));
+app.put('/api/admin/content/:id', requireAdmin, asyncRoute(async (req, res) => { const input = z.object({ districtId: z.string().optional(), categoryId: z.string().optional(), title: z.string().min(2).optional(), status: z.enum(['draft', 'review', 'published', 'hidden']).optional(), featured: z.boolean().optional(), fields: z.record(z.unknown()).optional(), media: z.array(z.object({ type: z.string(), url: z.string().url(), alt: z.string().optional() })).optional(), location: z.object({ lat: z.number(), lng: z.number() }).optional() }).parse(req.body); if (input.districtId) input.districtId = await resolveDistrictId(input.districtId); if (input.categoryId) input.categoryId = await resolveCategoryId(input.categoryId); if (input.location) input.location = { type: 'Point', coordinates: [input.location.lng, input.location.lat] }; const item = await Content.findByIdAndUpdate(req.params.id, input, { new: true, runValidators: true }).lean(); if (!item) return res.status(404).json({ error: 'Not found' }); res.json(item); }));
+app.delete('/api/admin/content/:id', requireAdmin, asyncRoute(async (req, res) => { const item = await Content.findByIdAndDelete(req.params.id); if (!item) return res.status(404).json({ error: 'Not found' }); res.status(204).end(); }));
+app.post('/api/admin/admins', requireAdmin, asyncRoute(async (req, res) => { const input = z.object({ name: z.string().min(2), email: z.string().email(), password: z.string().min(8), role: z.enum(['super_admin', 'editor', 'reviewer']).optional() }).parse(req.body); const admin = await Admin.create({ name: input.name, email: input.email, passwordHash: await bcrypt.hash(input.password, 12), role: input.role }); res.status(201).json({ id: admin.id, name: admin.name, email: admin.email, role: admin.role, active: admin.active }); }));
+app.put('/api/admin/admins/:id', requireAdmin, asyncRoute(async (req, res) => { const input = z.object({ name: z.string().min(2).optional(), role: z.enum(['super_admin', 'editor', 'reviewer']).optional(), active: z.boolean().optional(), password: z.string().min(8).optional() }).parse(req.body); const update = { ...input }; if (input.password) update.passwordHash = await bcrypt.hash(input.password, 12); delete update.password; const admin = await Admin.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true }).lean(); if (!admin) return res.status(404).json({ error: 'Not found' }); res.json({ id: admin._id, name: admin.name, email: admin.email, role: admin.role, active: admin.active }); }));
+app.use((err, _, res, __) => { if (err instanceof z.ZodError) return res.status(400).json({ error: 'Invalid request', details: err.flatten() }); console.error(err); res.status(500).json({ error: 'Server error' }); });
+
+await mongoose.connect(process.env.MONGODB_URI);
+await Promise.all([State.init(), District.init(), Category.init(), DistrictCategory.init(), Content.init(), Admin.init(), User.init()]);
+if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+	await Admin.findOneAndUpdate({ email: process.env.ADMIN_EMAIL.toLowerCase() }, { name: process.env.ADMIN_NAME || 'Portal Administrator', email: process.env.ADMIN_EMAIL, passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD, 12), role: 'super_admin', active: true }, { upsert: true, new: true, setDefaultsOnInsert: true });
+}
+if (process.env.USER_EMAIL && process.env.USER_PASSWORD) {
+	await User.findOneAndUpdate({ email: process.env.USER_EMAIL.toLowerCase() }, { name: process.env.USER_NAME || 'Heritage Explorer', email: process.env.USER_EMAIL, passwordHash: await bcrypt.hash(process.env.USER_PASSWORD, 12), state: process.env.USER_STATE || '', district: process.env.USER_DISTRICT || '', active: true }, { upsert: true, new: true, setDefaultsOnInsert: true });
+}
+app.listen(process.env.PORT || 8080, () => console.log(`Dharohar API listening on ${process.env.PORT || 8080}`));
