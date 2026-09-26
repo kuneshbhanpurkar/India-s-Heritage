@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { AdminOfficer, MetricItem } from '../types';
-import { MetricCard } from './common/MetricCard';
-import { OfficerTableRow } from './common/OfficerTableRow';
+import { MetricCard } from '../components/common/MetricCard';
+import { OfficerTableRow } from '../components/common/OfficerTableRow';
 
-export interface ManageAdminsViewProps {
+export interface ManageAdminsPageProps {
   officers: AdminOfficer[];
   onInviteNewAdmin: () => void;
   onEditOfficer: (officer: AdminOfficer) => void;
@@ -12,7 +12,7 @@ export interface ManageAdminsViewProps {
   metrics?: MetricItem[];
 }
 
-export const ManageAdminsView: React.FC<ManageAdminsViewProps> = ({
+export const ManageAdminsPage: React.FC<ManageAdminsPageProps> = ({
   officers,
   onInviteNewAdmin,
   onEditOfficer,
@@ -169,3 +169,7 @@ export const ManageAdminsView: React.FC<ManageAdminsViewProps> = ({
     </main>
   );
 };
+
+// Aliases for backwards compatibility
+export const ManageAdminsView = ManageAdminsPage;
+export type ManageAdminsViewProps = ManageAdminsPageProps;

@@ -5,10 +5,10 @@ import {
   FilterTabs,
   Pagination,
   PlaceTableRow,
-} from './common';
-import { Sparkles, Plus, Search, MapPin, Layers } from 'lucide-react';
+} from '../components/common';
+import { Plus, MapPin, Layers } from 'lucide-react';
 
-export interface SectionContentManagerProps {
+export interface SectionContentPageProps {
   sectionSlug: string;
   sectionTitle: string;
   sectionDescription?: string;
@@ -23,7 +23,7 @@ export interface SectionContentManagerProps {
   metrics?: MetricItem[];
 }
 
-export const SectionContentManager: React.FC<SectionContentManagerProps> = ({
+export const SectionContentPage: React.FC<SectionContentPageProps> = ({
   sectionSlug,
   sectionTitle,
   sectionDescription,
@@ -280,3 +280,7 @@ export const SectionContentManager: React.FC<SectionContentManagerProps> = ({
     </main>
   );
 };
+
+// Aliases for backwards compatibility
+export const SectionContentManager = SectionContentPage;
+export type SectionContentManagerProps = SectionContentPageProps;

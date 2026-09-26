@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { RecordStep, VideoRecord, PdfDocument, HeritagePlace } from '../types';
-import { ToggleSwitch, TariffInput, DaySelector } from './common';
+import { ToggleSwitch, TariffInput, DaySelector } from '../components/common';
 
-interface AddRecordWizardProps {
+export interface AddRecordPageProps {
   onCancel: () => void;
   onPublish: (newPlace: Partial<HeritagePlace>) => void;
   editingPlace?: HeritagePlace | null;
@@ -19,7 +19,7 @@ interface AddRecordWizardProps {
   onPreviewImage: (url: string, title: string) => void;
 }
 
-export const AddRecordWizard: React.FC<AddRecordWizardProps> = ({
+export const AddRecordPage: React.FC<AddRecordPageProps> = ({
   onCancel,
   onPublish,
   editingPlace,
@@ -1491,7 +1491,7 @@ export const AddRecordWizard: React.FC<AddRecordWizardProps> = ({
                   <span className="material-symbols-outlined text-base text-secondary">
                     bookmark_border
                   </span>
-                  <span>Save as Draft</span>
+                  <span>Save Draft</span>
                 </button>
                 <button
                   id="final-publish-btn"
@@ -1510,3 +1510,6 @@ export const AddRecordWizard: React.FC<AddRecordWizardProps> = ({
     </div>
   );
 };
+
+// Aliases for backwards compatibility
+export const AddRecordWizard = AddRecordPage;

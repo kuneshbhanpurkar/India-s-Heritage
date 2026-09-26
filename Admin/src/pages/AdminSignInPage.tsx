@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { AdminOfficer } from '../types';
 import { loginAdmin } from '../api';
 
-export interface AdminSignInViewProps {
+export interface AdminSignInPageProps {
   onSignIn: (officer: AdminOfficer, token: string) => void;
   onCancel?: () => void;
   currentOfficer?: AdminOfficer;
@@ -11,7 +11,7 @@ export interface AdminSignInViewProps {
   portalSubtitle?: string;
 }
 
-export const AdminSignInView: React.FC<AdminSignInViewProps> = ({
+export const AdminSignInPage: React.FC<AdminSignInPageProps> = ({
   onSignIn,
   onCancel,
   currentOfficer,
@@ -258,3 +258,7 @@ export const AdminSignInView: React.FC<AdminSignInViewProps> = ({
     </div>
   );
 };
+
+// Aliases for backwards compatibility
+export const AdminSignInView = AdminSignInPage;
+export type AdminSignInViewProps = AdminSignInPageProps;

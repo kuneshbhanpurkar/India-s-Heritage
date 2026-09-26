@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { ViewType, HeritagePlace, VideoRecord, PdfDocument, AdminOfficer } from './types';
-import { Sidebar } from './components/Sidebar';
-import { MobileHeader } from './components/MobileHeader';
-import { DashboardView } from './components/DashboardView';
-import { SectionContentManager } from './components/SectionContentManager';
-import { AddRecordWizard } from './components/AddRecordWizard';
-import { ManageAdminsView } from './components/ManageAdminsView';
-import { AdminSignInView } from './components/AdminSignInView';
+import { Sidebar, MobileHeader } from './components';
+import {
+  DashboardPage as DashboardView,
+  SectionContentPage as SectionContentManager,
+  AddRecordPage as AddRecordWizard,
+  ManageAdminsPage as ManageAdminsView,
+  AdminSignInPage as AdminSignInView,
+} from './pages';
 import {
   createAdminOfficer,
   createContent,

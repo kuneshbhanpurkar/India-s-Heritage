@@ -1,9 +1,9 @@
 import React from 'react';
 import { AdminSummary } from '../api';
 import { ViewType, MetricItem, JurisdictionLedgerItem } from '../types';
-import { MetricCard } from './common/MetricCard';
+import { MetricCard } from '../components/common/MetricCard';
 
-interface DashboardViewProps {
+export interface DashboardPageProps {
   onNavigate: (view: ViewType) => void;
   selectedState: string;
   selectedDistrict: string;
@@ -15,7 +15,7 @@ interface DashboardViewProps {
   summary?: AdminSummary | null;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({
+export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigate,
   selectedState,
   selectedDistrict,
@@ -355,3 +355,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     </main>
   );
 };
+
+// Aliases for compatibility
+export const DashboardView = DashboardPage;
