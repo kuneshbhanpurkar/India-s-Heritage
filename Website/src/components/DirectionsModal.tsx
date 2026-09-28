@@ -14,12 +14,12 @@ export const DirectionsModal: React.FC<DirectionsModalProps> = ({ site, onClose 
   const stepsByMode = {
     walk: [
       {
-        instruction: 'Head toward MG Road from your current location in Indore',
+        instruction: `Head toward the main access road in ${site.location || 'the local circle'}`,
         dist: '120 m',
         time: '2 min',
       },
       {
-        instruction: 'Follow the heritage precinct signs toward Rajwada / historic bazaar axis',
+        instruction: `Follow the official heritage pedestrian route toward ${site.name}`,
         dist: '180 m',
         time: '3 min',
       },
@@ -31,34 +31,34 @@ export const DirectionsModal: React.FC<DirectionsModalProps> = ({ site, onClose 
     ],
     transit: [
       {
-        instruction: 'Board Indore iBus BRTS at the nearest station toward Rajwada Circle',
+        instruction: `Board local transit / metro toward ${site.location || 'heritage zone'}`,
         dist: '1.2 km',
         time: '6 min',
       },
       {
-        instruction: 'Alight at Rajwada / Gandhi Hall Interchange',
+        instruction: `Alight at the nearest station or stop for ${site.name}`,
         dist: '50 m',
         time: '1 min',
       },
       {
-        instruction: `Walk through the pedestrian heritage boulevard into ${site.name}`,
+        instruction: `Walk along the designated heritage pathway into ${site.name}`,
         dist: '150 m',
         time: '2 min',
       },
     ],
     drive: [
       {
-        instruction: 'Head south-west on Jawahar Marg / MG Road',
+        instruction: `Follow navigation along the main arterial route in ${site.location || 'the city'}`,
         dist: '600 m',
         time: '3 min',
       },
       {
-        instruction: 'Turn into designated Municipal Heritage Multilevel Parking lot',
+        instruction: `Enter the visitor parking facility designated for ${site.name}`,
         dist: '150 m',
         time: '2 min',
       },
       {
-        instruction: `2-minute pedestrian stroll to ${site.name} main portal`,
+        instruction: `Short pedestrian walk to ${site.name} main portal`,
         dist: '120 m',
         time: '2 min',
       },

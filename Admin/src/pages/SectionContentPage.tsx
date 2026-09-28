@@ -21,6 +21,8 @@ export interface SectionContentPageProps {
   selectedState: string;
   selectedDistrict: string;
   metrics?: MetricItem[];
+  isCategoryActive?: boolean;
+  onToggleCategoryStatus?: (enabled: boolean) => void;
 }
 
 export const SectionContentPage: React.FC<SectionContentPageProps> = ({
@@ -36,6 +38,8 @@ export const SectionContentPage: React.FC<SectionContentPageProps> = ({
   selectedState,
   selectedDistrict,
   metrics,
+  isCategoryActive = true,
+  onToggleCategoryStatus,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'published' | 'draft' | 'review'>('published');
@@ -155,18 +159,71 @@ export const SectionContentPage: React.FC<SectionContentPageProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          {/* Action Bar matching Reference Image 2: CATEGORY STATUS Toggle + Add New Place Record */}
+          <div className="flex items-center gap-3 shrink-0 flex-wrap">
+            {/* CATEGORY STATUS Toggle Box */}
+            <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-outline-variant/60 bg-surface-container-lowest shadow-xs">
+              <div className="flex flex-col">
+                <span className="text-[0.58rem] font-bold uppercase tracking-wider text-secondary leading-none">
+                  CATEGORY STATUS
+                </span>
+                <span
+                  className={`text-[0.72rem] font-bold leading-tight ${
+                    isCategoryActive ? 'text-teal-700' : 'text-stone-400'
+                  }`}
+                >
+                  {isCategoryActive ? 'Active' : 'Disabled'}
+                </span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isCategoryActive}
+                onClick={() => onToggleCategoryStatus && onToggleCategoryStatus(!isCategoryActive)}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
+                  isCategoryActive ? 'bg-emerald-600' : 'bg-stone-300'
+                }`}
+                title={`Toggle category ${isCategoryActive ? 'OFF' : 'ON'} for ${selectedDistrict}`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out mt-0.5 ml-0.5 ${
+                    isCategoryActive ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* + Add New Place Record Button */}
             <button
               id={`add-${sectionSlug}-btn`}
               type="button"
               onClick={onNavigateAddRecord}
-              className="px-4 py-2.5 rounded-xl bg-primary text-on-primary font-semibold text-xs tracking-wide shadow-md hover:bg-primary-hover active:scale-95 transition-all flex items-center gap-2"
+              className="px-4 py-2 rounded-lg bg-[#944600] hover:bg-[#7e3b00] active:scale-95 text-white font-semibold text-xs tracking-wide shadow-sm transition-all flex items-center gap-1.5"
             >
-              <Plus className="w-4 h-4" />
-              <span>Add {sectionTitle}</span>
+              <span className="text-sm font-bold leading-none">+</span>
+              <span>Add New Place Record</span>
             </button>
           </div>
         </div>
+
+        {/* Category Inactive District Warning Banner */}
+        {!isCategoryActive && (
+          <div className="p-3.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <span className="material-symbols-outlined text-amber-600 text-lg shrink-0">visibility_off</span>
+              <span>
+                <strong>{sectionTitle}</strong> is currently <strong>Disabled</strong> for <strong>{selectedDistrict}</strong>. Records remain safely stored in the database but will not appear to public users.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onToggleCategoryStatus && onToggleCategoryStatus(true)}
+              className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors shrink-0"
+            >
+              Enable for {selectedDistrict}
+            </button>
+          </div>
+        )}
 
         {/* 4 KPI Metrics Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

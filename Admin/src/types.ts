@@ -6,10 +6,10 @@ export interface HeritagePlace {
   id: string;
   name: string;
   code: string;
-  category: 'Fort' | 'Temple' | 'Palace' | 'Stepwell' | 'Museum' | 'Monument' | 'Haveli' | 'Water Fort' | 'Cultural Heritage' | 'Other';
+  category: 'Fort' | 'Temple' | 'Palace' | 'Stepwell' | 'Museum' | 'Monument' | 'Haveli' | 'Water Fort' | 'Cultural Heritage' | 'Other' | string;
   city: string;
   subLocation: string;
-  status: 'Published' | 'Draft (In Curation)' | 'Draft (Missing GIS)' | 'Verification Pending';
+  status: 'Published' | 'Draft (In Curation)' | 'Draft (Missing GIS)' | 'Verification Pending' | 'Draft' | string;
   imageUrl: string;
   description?: string;
   openingHours?: string;
@@ -20,6 +20,11 @@ export interface HeritagePlace {
   media?: Array<{ type: string; url: string; alt?: string }>;
   latitude?: number;
   longitude?: number;
+  section?: string;
+  districtId?: string;
+  stateId?: string;
+  visualsMediaEnabled?: boolean;
+  bookEnabled?: boolean;
 }
 
 export interface VideoRecord {

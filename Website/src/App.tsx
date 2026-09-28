@@ -211,13 +211,35 @@ export default function App() {
     );
   };
 
-  const handleViewMonograph = (site: HeritageSite) => {
+  const handleViewMonograph = async (site: HeritageSite) => {
     if (!user) {
       openAuthPage('signup');
       return;
     }
     setSelectedSite(site);
     setCurrentRoute('monograph');
+    try {
+      if (site.id) {
+        const full = await getContentDetails(site.id);
+        if (full) {
+          const raw = full as any;
+          setSelectedSite((prev) => ({
+            ...prev,
+            ...full,
+            description: raw.fullDescription || full.description || raw.shortDescription || raw.fields?.description || prev.description,
+            subTitle: raw.subtitle || full.subTitle || raw.fields?.subTitle || prev.subTitle,
+            location: raw.districtName || raw.cityName || raw.location || prev.location,
+            builtYear: raw.builtYear || raw.fields?.builtYear || prev.builtYear,
+            dynasty: raw.dynasty || raw.fields?.dynasty || prev.dynasty,
+            category: raw.category || raw.fields?.category || prev.category,
+            openingHours: raw.openingHours || raw.fields?.openingHours || prev.openingHours,
+            visitorTariffs: raw.visitorTariffs || raw.fields?.visitorTariffs || prev.visitorTariffs,
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch extra monograph details:', err);
+    }
   };
 
   const handleGetDirections = (site: HeritageSite) => {

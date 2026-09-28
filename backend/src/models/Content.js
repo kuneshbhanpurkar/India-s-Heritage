@@ -8,6 +8,49 @@ const geoPointSchema = new mongoose.Schema(
 	{ _id: false },
 );
 
+const mediaItemSchema = new mongoose.Schema(
+	{
+		type: { type: String, enum: ['image', 'video', 'pdf', 'audio'], default: 'image' },
+		url: { type: String, default: '', trim: true },
+		alt: { type: String, default: '', trim: true },
+		title: { type: String, default: '', trim: true },
+		caption: { type: String, default: '', trim: true },
+		source: { type: String, default: '', trim: true },
+		license: { type: String, default: '', trim: true },
+		displayOrder: { type: Number, default: 0 },
+		active: { type: Boolean, default: true },
+		storageKey: { type: String, default: '' },
+	},
+	{ _id: true },
+);
+
+const documentItemSchema = new mongoose.Schema(
+	{
+		title: { type: String, default: '', trim: true },
+		type: { type: String, default: 'pdf', trim: true },
+		url: { type: String, default: '', trim: true },
+		author: { type: String, default: '', trim: true },
+		publisher: { type: String, default: '', trim: true },
+		source: { type: String, default: '', trim: true },
+		license: { type: String, default: '', trim: true },
+		displayOrder: { type: Number, default: 0 },
+		active: { type: Boolean, default: true },
+	},
+	{ _id: true },
+);
+
+const sourceItemSchema = new mongoose.Schema(
+	{
+		sourceTitle: { type: String, default: '', trim: true },
+		sourceUrl: { type: String, default: '', trim: true },
+		publisher: { type: String, default: '', trim: true },
+		attribution: { type: String, default: '', trim: true },
+		license: { type: String, default: '', trim: true },
+		verificationNotes: { type: String, default: '', trim: true },
+	},
+	{ _id: true },
+);
+
 const contentSchema = new mongoose.Schema(
 	{
 		cityId: { type: mongoose.Schema.Types.ObjectId, ref: 'City', required: true, index: true },
@@ -15,29 +58,45 @@ const contentSchema = new mongoose.Schema(
 		stateId: { type: mongoose.Schema.Types.ObjectId, ref: 'State', index: true },
 		section: {
 			type: String,
-			enum: ['popular-places', 'hidden-places', 'cultural-folk', 'regional-festivals', 'living-culture'],
+			enum: [
+				'popular-places',
+				'hidden-places',
+				'dance-traditions',
+				'cultural-folk',
+				'culinary-heritage',
+				'arts-crafts',
+				'living-traditions',
+				'living-culture',
+				'regional-festivals',
+			],
 			required: true,
 			index: true,
 		},
 		category: { type: String, default: 'Heritage' },
 		categoryId: { type: mongoose.Schema.Types.Mixed },
 		title: { type: String, required: true, trim: true },
+		subtitle: { type: String, default: '', trim: true },
 		slug: { type: String, required: true, trim: true },
+		shortDescription: { type: String, default: '', trim: true },
+		fullDescription: { type: String, default: '', trim: true },
 		status: {
 			type: String,
-			enum: ['draft', 'review', 'published', 'hidden'],
-			default: 'published',
+			enum: ['draft', 'review', 'published', 'hidden', 'archived'],
+			default: 'draft',
 			index: true,
 		},
 		isFeatured: { type: Boolean, default: false },
+		mediaEnabled: { type: Boolean, default: true },
+		documentsEnabled: { type: Boolean, default: true },
+		version: { type: Number, default: 1 },
+		publishedAt: { type: Date },
+		publishedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+		createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+		updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 		fields: { type: mongoose.Schema.Types.Mixed, default: {} },
-		media: [
-			{
-				type: { type: String, default: 'image' },
-				url: { type: String, default: '' },
-				alt: { type: String, default: '' },
-			},
-		],
+		media: [mediaItemSchema],
+		documents: [documentItemSchema],
+		sources: [sourceItemSchema],
 		location: { type: geoPointSchema, default: () => ({ type: 'Point', coordinates: [0, 0] }) },
 		latitude: { type: Number },
 		longitude: { type: Number },
@@ -51,7 +110,7 @@ contentSchema.index({ stateId: 1, status: 1 });
 contentSchema.index({ location: '2dsphere' });
 contentSchema.index({ slug: 1 });
 
-// Pre-save hook to ensure districtId and lat/long stay synchronized
+// Pre-save hook to ensure districtId and lat/long stay synchronized and publishedAt is tracked
 contentSchema.pre('save', function (next) {
 	if (this.cityId && !this.districtId) {
 		this.districtId = this.cityId;
@@ -68,6 +127,11 @@ contentSchema.pre('save', function (next) {
 		this.longitude = this.location.coordinates[0];
 		this.latitude = this.location.coordinates[1];
 	}
+
+	if (this.isModified('status') && this.status === 'published' && !this.publishedAt) {
+		this.publishedAt = new Date();
+	}
+
 	next();
 });
 

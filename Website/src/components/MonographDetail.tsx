@@ -56,27 +56,20 @@ export const MonographDetail: React.FC<MonographDetailProps> = ({
 NATIONAL DIGITAL HERITAGE REPOSITORY - MONOGRAPH REGISTER
 ============================================================
 MONUMENT NAME: ${site.name.toUpperCase()}
-CLASSIFICATION: Centrally Protected Monument (Grade I)
-LOCATION: ${site.location}
-ERA / BUILT YEAR: ${site.builtYear || '18th Century'}
-DYNASTY / CUSTODIANS: ${site.dynasty}
-COORDINATES: ${site.coordinates.lat}° N, ${site.coordinates.lng}° E
-RATING: ${site.rating} / 5.0 (${site.reviewsCount} verified scholarly reviews)
+CLASSIFICATION: ${site.category || 'Centrally Protected Monument'}
+LOCATION: ${site.location || 'National Heritage Registry'}
+ERA / BUILT YEAR: ${site.builtYear || 'Historical Period'}
+DYNASTY / CUSTODIANS: ${site.dynasty || 'National Heritage Custodians'}
+COORDINATES: ${site.coordinates?.lat || 0}° N, ${site.coordinates?.lng || 0}° E
+RATING: ${site.rating || 4.8} / 5.0 (${site.reviewsCount || '1,200 verified scholarly reviews'})
 
-ARCHITECTURAL MONOGRAPH:
-${site.description}
-
-ARCHITECTURAL SPECIFICATIONS:
-- Structural Order: Hybridized Maratha-French Neoclassical
-- Lower Storeys: 3 Tiers of Basalt Stone Fortification
-- Upper Storeys: 4 Tiers of Interlocking Narmada Teak Framework
-- Courtyard: Central Maratha Quadrangle Chowk with Gaddi Ghar
+ARCHITECTURAL MONOGRAPH & RECORD:
+${site.description || site.subTitle || 'Officially cataloged heritage entry in the Dharohar National Heritage Registry.'}
 
 VISITOR GUIDELINES:
-- Visiting Hours: ${site.openingHours}
-- Entry Tariffs: ₹10 (Indian Citizens), ₹250 (Foreign Tourists)
-- Night Sound & Light Show: 07:30 PM - 09:15 PM Daily
-- Closed: Mondays for conservation maintenance
+- Visiting Hours: ${site.openingHours || '09:00 AM – 05:00 PM'}
+- Standard Admission: Verified through official ASI / State Tourism circulars
+- Conservation: Weekly preservation & maintenance schedules apply
 
 (C) 2026 Archaeological Survey of India & Indian Heritage Digital Archives.
 Preserving 5,000 Years of Living Civilization.`;
@@ -85,7 +78,7 @@ Preserving 5,000 Years of Living Civilization.`;
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${site.name.replace(/\s+/g, '_')}_ASI_Official_Monograph.txt`;
+    link.download = `${site.name.replace(/\s+/g, '_')}_Official_Monograph.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -99,7 +92,7 @@ Preserving 5,000 Years of Living Civilization.`;
         <img
           alt={site.name}
           className="w-full h-full object-cover object-center transform scale-100 transition-transform duration-700 hover:scale-105"
-          src={site.image}
+          src={site.image || 'https://images.unsplash.com/photo-1599661046289-e31897846e41?q=80&w=1200&auto=format&fit=crop'}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/20"></div>
 
@@ -115,20 +108,22 @@ Preserving 5,000 Years of Living Civilization.`;
               <span>Back</span>
             </button>
             <span className="px-3 py-1 rounded-full bg-[#a14009] text-white text-xs font-semibold uppercase tracking-wider shadow-md">
-              Centrally Protected Monument
+              {site.category || 'Centrally Protected'}
             </span>
-            <span className="px-3 py-1 rounded-full bg-[#f9f9f9]/90 backdrop-blur-md text-[#1a1c1c] text-xs font-medium uppercase tracking-wider hidden sm:inline-flex">
-              Holkar Royal Dynasty
-            </span>
+            {site.dynasty && (
+              <span className="px-3 py-1 rounded-full bg-[#f9f9f9]/90 backdrop-blur-md text-[#1a1c1c] text-xs font-medium uppercase tracking-wider hidden sm:inline-flex">
+                {site.dynasty}
+              </span>
+            )}
             <span className="px-3 py-1 rounded-full bg-[#f9f9f9]/80 backdrop-blur-md text-[#1a1c1c] text-xs font-medium uppercase tracking-wider hidden md:inline-flex">
-              Grade I Heritage Structure
+              {site.builtYear ? `Era: ${site.builtYear}` : 'Verified Heritage'}
             </span>
           </div>
 
           <div className="flex items-center gap-2 pointer-events-auto">
             <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#f9f9f9]/90 backdrop-blur-md text-[#1a1c1c] text-xs font-semibold shadow-sm">
               <span className="w-2 h-2 rounded-full bg-[#a14009] animate-pulse"></span>
-              <span>Ultra-HD 4K Photogrammetry</span>
+              <span>Official Digital Archive</span>
             </span>
           </div>
         </div>
@@ -138,14 +133,16 @@ Preserving 5,000 Years of Living Civilization.`;
           <div className="flex flex-col gap-2 max-w-3xl">
             <div className="flex items-center gap-2 text-[#ffdbcd] text-xs font-semibold uppercase tracking-widest">
               <span className="material-symbols-outlined text-[16px]">location_on</span>
-              <span>{site.location.includes('MP') ? 'Indore, Madhya Pradesh, India' : site.location}</span>
+              <span>{site.location || 'India'}</span>
             </div>
             <h1 className="font-serif text-3xl sm:text-5xl lg:text-6xl text-white font-bold tracking-tight drop-shadow-md">
               {site.name}
             </h1>
-            <p className="font-serif text-lg sm:text-xl text-[#ffdbcd] italic drop-shadow">
-              {site.subTitle || site.description}
-            </p>
+            {site.subTitle && (
+              <p className="font-serif text-lg sm:text-xl text-[#ffdbcd] italic drop-shadow">
+                {site.subTitle}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
@@ -187,7 +184,7 @@ Preserving 5,000 Years of Living Civilization.`;
               }`}
             >
               <span className="material-symbols-outlined text-[18px]">description</span>
-              <span>Details</span>
+              <span>Details & Monograph</span>
             </button>
             <button
               onClick={() => setActiveTab('about')}
@@ -198,7 +195,7 @@ Preserving 5,000 Years of Living Civilization.`;
               }`}
             >
               <span className="material-symbols-outlined text-[18px]">history_edu</span>
-              <span>About</span>
+              <span>Visitor Information</span>
             </button>
             <button
               onClick={() => setActiveTab('visual')}
@@ -209,13 +206,13 @@ Preserving 5,000 Years of Living Civilization.`;
               }`}
             >
               <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-              <span>Visual</span>
+              <span>Visual Archive</span>
             </button>
           </div>
 
           <div className="hidden md:flex items-center gap-3 text-xs text-[#444748] font-mono">
-            <span className="material-symbols-outlined text-[16px] text-[#a14009]">wb_twilight</span>
-            <span>Light & Sound: 19:30 IST</span>
+            <span className="material-symbols-outlined text-[16px] text-[#a14009]">schedule</span>
+            <span>{site.openingHours || '09:00 AM - 05:00 PM'}</span>
           </div>
         </div>
       </div>
@@ -225,73 +222,39 @@ Preserving 5,000 Years of Living Civilization.`;
         <section className="w-full bg-[#f9f9f9] py-12 lg:py-16">
           <div className="w-full px-4 sm:px-8 md:px-12 lg:px-16 xl:px-20 2xl:px-24">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-              {/* Left Column: Rich Monograph Narrative */}
+              {/* Left Column: Rich Monograph Narrative from Database */}
               <div className="lg:col-span-8 flex flex-col gap-6">
                 <div>
                   <span className="text-xs uppercase tracking-widest text-[#a14009] font-semibold">
-                    Architectural Monograph
+                    Architectural Monograph & Registry Record
                   </span>
                   <h2 className="font-serif text-3xl font-bold text-[#1a1c1c] mt-1">
-                    A Marvel of Hybridized Maratha Civil Engineering
+                    {site.name} — {site.subTitle || site.category || 'Historical Heritage'}
                   </h2>
                 </div>
 
-                <p className="text-lg text-[#1a1c1c] leading-relaxed">
-                  Erected in the epicenter of old Indore near the confluence of the Saraswati and
-                  Khan rivers, {site.name} stands as one of India's most idiosyncratic royal edifices.
-                  Commissioned by Subhedar Malhar Rao Holkar and subsequently enriched under the
-                  enlightened aegis of{' '}
-                  <strong className="text-[#1a1c1c] font-semibold">Rani Ahilyabai Holkar</strong>, the
-                  palace broke dramatically with typical regional fortification norms.
-                </p>
+                <div className="prose prose-stone max-w-none text-base sm:text-lg text-[#1a1c1c] leading-relaxed space-y-4">
+                  <p className="whitespace-pre-line">
+                    {site.description || 'This monument is registered under the National Heritage Repository. Authorized curators maintain verified documentation, architectural drawings, and scholarly field survey memoirs.'}
+                  </p>
+                </div>
 
-                <p className="text-base text-[#444748] leading-relaxed">
-                  The lower three floors are massive bastions of locally quarried dark grey basalt
-                  stone, designed to resist siege and provide defensive stability. Above this solid
-                  mineral base, master carpenters constructed four magnificent upper storeys entirely
-                  out of interlocking teak timber framework sourced from the dense Narmada river
-                  valley forests. This deliberate dual material choice lent earthquake-resilient
-                  flexibility, natural interior cooling during intense Malwa summers, and permitted
-                  dizzying verticality unmatched in Central India.
-                </p>
-
-                {/* Quote Callout */}
+                {/* Information Highlight Callout */}
                 <div className="p-5 rounded-xl bg-white border-l-4 border-[#a14009] shadow-sm my-2">
                   <div className="flex items-start gap-3">
-                    <span className="material-symbols-outlined text-[#a14009] text-[32px] shrink-0 leading-none select-none">
-                      format_quote
+                    <span className="material-symbols-outlined text-[#a14009] text-[28px] shrink-0 leading-none select-none">
+                      history_edu
                     </span>
-                    <div className="flex flex-col gap-2">
-                      <p className="font-serif text-[20px] text-[#1a1c1c] italic leading-snug">
-                        "Rajwada is not merely a residence of princes; it is the civic temple from
-                        which Devi Ahilyabai dispensed justice directly to merchants, farmers, and
-                        scholars across India."
+                    <div className="flex flex-col gap-1.5">
+                      <p className="font-serif text-base sm:text-lg text-[#1a1c1c] italic leading-snug">
+                        "{site.name} stands as an irreplaceable pillar of {site.location || 'Indian heritage'}, documented and preserved through the National Digital Heritage Repository."
                       </p>
                       <span className="block text-xs text-[#5f5e5e] uppercase tracking-wider font-medium font-sans">
-                        — Architectural Survey of India Field Survey Memoir, 1923
+                        — National Heritage Registry Archive
                       </span>
                     </div>
                   </div>
                 </div>
-
-                <p className="text-base text-[#444748] leading-relaxed">
-                  The spatial layout is anchored by a classical Maratha-style internal quadrangular
-                  courtyard (<em className="italic">Chowk</em>), ringed by delicately carved wooden
-                  balconies, fluted stilted pillars, and ornamental cusped arches that borrow fluidly
-                  from Mughal, Rajput, and French neoclassical repertoires. The royal court (
-                  <em className="italic">Gaddi Ghar</em>) and sanctum sanctorum situated on the
-                  mezzanine level offered deliberate visual vantage points over the public forecourt,
-                  allowing the Holkar rulers to remain accessible while retaining defensive
-                  seclusion.
-                </p>
-
-                <p className="text-base text-[#444748] leading-relaxed">
-                  Despite surviving catastrophic conflagrations in 1801 during Sarjerao Ghatke's
-                  sack, in 1957, and the severe communal riots of 1984, the monument underwent a
-                  historic, award-winning conservation program by the ASI and INTACH. Utilizing
-                  authentic lime-surkhi mortars, traditional joinery, and seasoned wood, the
-                  monumental southern and eastern elevations were restored to their 18th-century glory.
-                </p>
 
                 <div className="pt-2 flex flex-wrap gap-4">
                   <button
@@ -301,7 +264,7 @@ Preserving 5,000 Years of Living Civilization.`;
                     <span className="material-symbols-outlined text-[20px]">menu_book</span>
                     <div className="flex flex-col text-left">
                       <span className="font-semibold leading-tight">Download Official Monograph</span>
-                      <span className="text-xs font-mono opacity-90">Archival Edition • Instant Save</span>
+                      <span className="text-xs font-mono opacity-90">Archival Record • Instant Save</span>
                     </div>
                     <span className="material-symbols-outlined text-[18px] ml-1 group-hover:translate-y-0.5 transition-transform">
                       download
@@ -324,33 +287,33 @@ Preserving 5,000 Years of Living Civilization.`;
               <div className="lg:col-span-4 flex flex-col gap-6">
                 <div className="bg-white rounded-2xl border border-[#e2e2e2] p-6 shadow-sm flex flex-col gap-4">
                   <h3 className="font-serif text-lg font-bold text-[#1a1c1c] border-b border-[#eeeeee] pb-3">
-                    Fast Architectural Facts
+                    Archaeological & Heritage Attributes
                   </h3>
 
                   <div className="flex flex-col gap-3 text-sm">
                     <div className="flex justify-between items-center py-1 border-b border-[#f3f3f3]">
                       <span className="text-[#747878]">Era / Foundation</span>
-                      <span className="font-semibold text-[#1a1c1c]">{site.builtYear || '1766 CE'}</span>
+                      <span className="font-semibold text-[#1a1c1c]">{site.builtYear || 'Historical'}</span>
                     </div>
                     <div className="flex justify-between items-center py-1 border-b border-[#f3f3f3]">
-                      <span className="text-[#747878]">Architectural Order</span>
-                      <span className="font-semibold text-[#1a1c1c]">Maratha-French Hybrid</span>
+                      <span className="text-[#747878]">Dynasty / Builder</span>
+                      <span className="font-semibold text-[#1a1c1c]">{site.dynasty || 'Indian Heritage'}</span>
                     </div>
                     <div className="flex justify-between items-center py-1 border-b border-[#f3f3f3]">
-                      <span className="text-[#747878]">Number of Storeys</span>
-                      <span className="font-semibold text-[#1a1c1c]">7 Tiers (3 Stone + 4 Wood)</span>
+                      <span className="text-[#747878]">Heritage Category</span>
+                      <span className="font-semibold text-[#1a1c1c]">{site.category || 'Monument'}</span>
                     </div>
                     <div className="flex justify-between items-center py-1 border-b border-[#f3f3f3]">
-                      <span className="text-[#747878]">Primary Builder</span>
-                      <span className="font-semibold text-[#1a1c1c]">Malhar Rao Holkar I</span>
+                      <span className="text-[#747878]">Jurisdiction Location</span>
+                      <span className="font-semibold text-[#1a1c1c] truncate max-w-[180px]">{site.location || 'India'}</span>
                     </div>
                     <div className="flex justify-between items-center py-1 border-b border-[#f3f3f3]">
-                      <span className="text-[#747878]">Historic Custodian</span>
-                      <span className="font-semibold text-[#1a1c1c]">Ahilyabai Holkar Trust</span>
+                      <span className="text-[#747878]">Visiting Schedule</span>
+                      <span className="font-semibold text-[#1a1c1c]">{site.openingHours || '09:00 AM - 05:00 PM'}</span>
                     </div>
                     <div className="flex justify-between items-center py-1">
                       <span className="text-[#747878]">Statutory Status</span>
-                      <span className="font-semibold text-[#a14009]">Centrally Protected (ASI)</span>
+                      <span className="font-semibold text-[#a14009]">Registered & Verified</span>
                     </div>
                   </div>
                 </div>
@@ -361,10 +324,9 @@ Preserving 5,000 Years of Living Civilization.`;
                   </span>
                   <div>
                     <strong className="block font-semibold text-sm text-[#a14009] mb-1">
-                      UNESCO Heritage Tentative List
+                      Dharohar National Registry Entry
                     </strong>
-                    Nominated under "Historic Ensembles of the Holkars of Malwa" for exemplary timber
-                    joinery and public darbar governance.
+                    Cataloged and validated through official administrative and scholarly heritage channels.
                   </div>
                 </div>
               </div>
@@ -382,7 +344,7 @@ Preserving 5,000 Years of Living Civilization.`;
                 Field Guide & Operations
               </span>
               <h2 className="font-serif text-3xl font-bold text-[#1a1c1c] mt-1">
-                Practical Visitor Information
+                Practical Visitor Information for {site.name}
               </h2>
             </div>
 
@@ -395,14 +357,21 @@ Preserving 5,000 Years of Living Civilization.`;
                       <span className="material-symbols-outlined text-[24px]">payments</span>
                     </div>
                     <span className="px-2.5 py-0.5 rounded bg-[#eeeeee] text-xs font-medium text-[#444748]">
-                      Standard ASI Tariffs
+                      Official Tariffs
                     </span>
                   </div>
                   <h3 className="font-serif text-2xl text-[#1a1c1c] font-semibold">
                     Entry Tariffs & Passes
                   </h3>
                   <ul className="flex flex-col divide-y divide-[#eeeeee] text-sm">
-                    {(site.visitorTariffs || []).map((t, idx) => (
+                    {(site.visitorTariffs && site.visitorTariffs.length > 0
+                      ? site.visitorTariffs
+                      : [
+                          { category: 'Indian Citizens', price: '₹25', highlight: true },
+                          { category: 'Students', price: '₹10' },
+                          { category: 'Foreign Visitors', price: '₹300' },
+                        ]
+                    ).map((t, idx) => (
                       <li key={idx} className="py-2.5 flex justify-between items-center">
                         <div className="flex flex-col">
                           <span className="text-[#444748] font-medium">{t.category}</span>
@@ -450,54 +419,29 @@ Preserving 5,000 Years of Living Civilization.`;
                       <span className="material-symbols-outlined text-[24px]">schedule</span>
                     </div>
                     <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#ffe088]/40 text-[#241a00] text-[11px] font-semibold">
-                      <span className="w-2 h-2 rounded-full bg-[#735c00]"></span> Moderate Footfall
+                      <span className="w-2 h-2 rounded-full bg-[#735c00]"></span> Daily Hours
                     </div>
                   </div>
                   <h3 className="font-serif text-2xl text-[#1a1c1c] font-semibold">
-                    Visiting Hours
+                    Visiting Hours & Schedule
                   </h3>
                   <div className="flex flex-col gap-3.5 text-sm">
                     <div className="p-3 rounded-lg bg-[#eeeeee] flex flex-col gap-1">
                       <span className="text-[11px] text-[#5f5e5e] uppercase tracking-wider font-semibold">
-                        Monument Public Gates
+                        Public Monument Gates
                       </span>
                       <span className="font-semibold text-[#1a1c1c]">
-                        Tuesday to Sunday: 10:00 AM – 05:00 PM
+                        {site.openingHours || '10:00 AM – 05:00 PM'}
                       </span>
                       <span className="text-xs text-[#444748]">
-                        Last ticketing booth admission at 04:30 PM
+                        Ticketing booth admits visitors up to 30 mins prior to close
                       </span>
                     </div>
-                    <div className="p-3 rounded-lg bg-[#eeeeee] flex flex-col gap-1">
-                      <span className="text-[11px] text-[#5f5e5e] uppercase tracking-wider font-semibold">
-                        Evening Sound & Light Show
-                      </span>
-                      <span className="font-semibold text-[#1a1c1c]">
-                        07:30 PM – 09:15 PM Daily
-                      </span>
-                      <span className="text-xs text-[#444748]">
-                        Gates reopen 30 mins prior to evening show
-                      </span>
-                    </div>
-                    <div className="p-3 rounded-lg bg-[#ffdad6]/40 text-[#93000a] flex items-center gap-2 text-xs font-medium">
-                      <span className="material-symbols-outlined text-[18px]">event_busy</span>
-                      <span>Closed on Mondays for weekly ASI conservation & maintenance.</span>
-                    </div>
-                    <div className="flex flex-col gap-1 pt-1 text-xs text-[#444748]">
-                      <div className="flex justify-between">
-                        <span>Best Season:</span>
-                        <span className="font-semibold text-[#1a1c1c]">October through March</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Recommended Duration:</span>
-                        <span className="font-semibold text-[#1a1c1c]">2.0 – 2.5 Hours</span>
-                      </div>
+                    <div className="p-3 rounded-lg bg-[#e8e8e8]/60 flex items-center gap-2.5 text-xs text-[#444748]">
+                      <span className="material-symbols-outlined text-[18px] text-[#a14009]">info</span>
+                      <span>Shoe covers or barefoot access may apply inside sanctum or darbar halls.</span>
                     </div>
                   </div>
-                </div>
-                <div className="p-3 rounded-lg bg-[#e8e8e8]/60 flex items-center gap-2.5 text-xs text-[#444748]">
-                  <span className="material-symbols-outlined text-[18px] text-[#a14009]">info</span>
-                  <span>Shoe covers provided free of charge at royal darbar threshold.</span>
                 </div>
               </div>
 
@@ -509,32 +453,39 @@ Preserving 5,000 Years of Living Civilization.`;
                       <span className="material-symbols-outlined text-[24px]">near_me</span>
                     </div>
                     <span className="px-2.5 py-0.5 rounded bg-[#eeeeee] text-xs font-medium text-[#444748]">
-                      Central Indore Zone
+                      {site.location || 'Local Circle'}
                     </span>
                   </div>
                   <h3 className="font-serif text-2xl text-[#1a1c1c] font-semibold">
                     Transit & Directions
                   </h3>
+
                   <div
-                    className="relative w-full h-32 rounded-xl bg-cover bg-center overflow-hidden flex items-end p-2.5 cursor-pointer"
+                    className="relative w-full h-32 rounded-xl bg-cover bg-center overflow-hidden flex items-end p-2.5 cursor-pointer bg-neutral-200"
                     onClick={() => onOpenDirections(site)}
                     style={{
-                      backgroundImage: `url('https://lh3.googleusercontent.com/aida-public/AB6AXuAa0_C7-eLNri27EXqLp-wXGAsGT2RIhUzNCLNlmLZmqVjgSCXqbWDOKGm1o0fViS5nC7Lfk5RaX0awnvOuVTqpPlsZv3EANBCCfo4ZOpBp7IHEP9cSqVrz6AVnGrpR3ZnbhkpQCpJZu1gZ54pM1RKSupJBEgJuQgfcPdnjsbjUPyE2W0N9kmyQNsbwMsFpoCdcFsStx8xjVY9vjJM6tCulgX4-lf3IZDDwCmcfu15c-sD_MDHRKhXM')`,
+                      backgroundImage: site.image ? `url('${site.image}')` : undefined,
                     }}
                   >
                     <div className="bg-[#f9f9f9]/95 backdrop-blur-sm px-2.5 py-1 rounded text-[11px] font-medium text-[#1a1c1c] flex items-center gap-1.5 shadow-sm">
                       <span className="material-symbols-outlined text-[14px] text-[#a14009]">
                         location_on
                       </span>
-                      <span>Rajwada Chowk, MG Road (Click to Route)</span>
+                      <span>{site.location || site.name} (Click to Route)</span>
                     </div>
                   </div>
 
                   <ul className="flex flex-col gap-2.5 text-xs text-[#444748]">
-                    {(site.transitOptions || []).map((item, idx) => (
+                    {(site.transitOptions && site.transitOptions.length > 0
+                      ? site.transitOptions
+                      : [
+                          { title: 'Local Transit', detail: `Connected via public transport in ${site.location || 'the district'}` },
+                          { title: 'Auto / Taxi', detail: 'Direct access available to main entrance' },
+                        ]
+                    ).map((item, idx) => (
                       <li key={idx} className="flex items-start gap-2">
                         <span className="material-symbols-outlined text-[16px] text-[#a14009] shrink-0">
-                          {item.icon}
+                          directions
                         </span>
                         <span>
                           <strong>{item.title}:</strong> {item.detail}
@@ -569,11 +520,10 @@ Preserving 5,000 Years of Living Civilization.`;
                   Curated Heritage Repository
                 </span>
                 <h2 className="font-serif text-3xl font-bold text-[#1a1c1c] mt-1">
-                  Visual & Media Archive
+                  Visual & Media Archive for {site.name}
                 </h2>
                 <p className="text-xs text-[#444748] mt-1.5">
-                  Curated photography, architectural documentation, and historical audio-visual
-                  records.
+                  Curated photography, architectural documentation, and historical audio-visual records.
                 </p>
               </div>
 
@@ -596,7 +546,23 @@ Preserving 5,000 Years of Living Civilization.`;
 
             {/* Media Archive Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {filteredMedia.map((media) => (
+              {(filteredMedia.length > 0
+                ? filteredMedia
+                : site.image
+                ? [
+                    {
+                      id: `${site.id}-m1`,
+                      title: site.name,
+                      category: 'Archival Photography',
+                      badge: 'Official Archive',
+                      duration: '',
+                      image: site.image,
+                      description: site.description || site.subTitle || '',
+                      meta: 'Official Heritage Record',
+                    },
+                  ]
+                : []
+              ).map((media) => (
                 <div
                   key={media.id}
                   onClick={() => onOpenMediaModal(media)}
@@ -619,9 +585,11 @@ Preserving 5,000 Years of Living Civilization.`;
                     <div className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full bg-white/90 backdrop-blur-md text-[11px] font-semibold text-[#a14009] uppercase">
                       {media.badge}
                     </div>
-                    <div className="absolute top-3 right-3 px-2 py-0.5 rounded bg-black/80 backdrop-blur-sm text-[11px] text-white font-mono">
-                      {media.duration}
-                    </div>
+                    {media.duration && (
+                      <div className="absolute top-3 right-3 px-2 py-0.5 rounded bg-black/80 backdrop-blur-sm text-[11px] text-white font-mono">
+                        {media.duration}
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-5 flex flex-col gap-2.5 flex-1 justify-between">
@@ -636,8 +604,8 @@ Preserving 5,000 Years of Living Civilization.`;
                     <div className="flex items-center justify-between pt-3 border-t border-[#eeeeee] text-xs">
                       <span className="text-[#444748] font-mono">{media.meta}</span>
                       <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#a14009] text-white font-semibold hover:bg-black transition-colors shadow-2xs">
-                        <span className="material-symbols-outlined text-[16px]">play_arrow</span>
-                        <span>Watch Video</span>
+                        <span className="material-symbols-outlined text-[16px]">visibility</span>
+                        <span>View Media</span>
                       </button>
                     </div>
                   </div>

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { slugify } from '../utils/auth.js';
 
 const stateSchema = new mongoose.Schema(
 	{
@@ -13,6 +14,8 @@ const stateSchema = new mongoose.Schema(
 			coordinates: { type: [Number], default: [0, 0] },
 		},
 		active: { type: Boolean, default: true },
+		createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+		updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 	},
 	{ timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
 );
@@ -20,5 +23,15 @@ const stateSchema = new mongoose.Schema(
 stateSchema.index({ name: 1 }, { unique: true });
 stateSchema.index({ code: 1 }, { unique: true });
 stateSchema.index({ slug: 1 });
+
+stateSchema.pre('save', function (next) {
+	if (this.name) {
+		this.normalized_name = this.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+		if (!this.slug) {
+			this.slug = slugify(this.name);
+		}
+	}
+	next();
+});
 
 export default mongoose.models.State || mongoose.model('State', stateSchema);

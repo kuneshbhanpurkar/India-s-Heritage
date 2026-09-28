@@ -41,7 +41,7 @@ lerna-debug.log*
 *.sln
 *.sw?
 
-# Operating System files
-.DS_Store
-Thumbs.db
-desktop.ini
+# Archives & Temporary Design Exports
+*.zip
+stitch_extracted/
+

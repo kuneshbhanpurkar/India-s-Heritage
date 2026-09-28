@@ -4,18 +4,18 @@ import { ToggleSwitch, TariffInput, DaySelector } from '../components/common';
 
 export interface AddRecordPageProps {
   onCancel: () => void;
-  onPublish: (newPlace: Partial<HeritagePlace>) => void;
+  onPublish: (newPlace: Partial<HeritagePlace>, existingId?: string) => void;
   editingPlace?: HeritagePlace | null;
   selectedState: string;
   selectedDistrict: string;
-  videos: VideoRecord[];
-  onAddVideo: (video: Omit<VideoRecord, 'id'>) => void;
-  onDeleteVideo: (id: string) => void;
-  onPreviewVideo: (video: VideoRecord) => void;
-  pdfDocuments: PdfDocument[];
-  onAddPdf: (pdf: Omit<PdfDocument, 'id'>) => void;
-  onDeletePdf: (id: string) => void;
-  onPreviewPdf: (pdf: PdfDocument) => void;
+  videos?: VideoRecord[];
+  onAddVideo?: (video: Omit<VideoRecord, 'id'>) => void;
+  onDeleteVideo?: (id: string) => void;
+  onPreviewVideo?: (video: VideoRecord) => void;
+  pdfDocuments?: PdfDocument[];
+  onAddPdf?: (pdf: Omit<PdfDocument, 'id'>) => void;
+  onDeletePdf?: (id: string) => void;
+  onPreviewPdf?: (pdf: PdfDocument) => void;
   onPreviewImage: (url: string, title: string) => void;
 }
 
@@ -25,20 +25,24 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
   editingPlace,
   selectedState,
   selectedDistrict,
-  videos,
+  videos = [],
   onAddVideo,
   onDeleteVideo,
-  onPreviewVideo,
-  pdfDocuments,
+  onPreviewVideo = () => {},
+  pdfDocuments = [],
   onAddPdf,
   onDeletePdf,
-  onPreviewPdf,
+  onPreviewPdf = () => {},
   onPreviewImage,
 }) => {
   const [currentStep, setCurrentStep] = useState<RecordStep>(1);
-  const [step2Enabled, setStep2Enabled] = useState(true);
-  const [step3Enabled, setStep3Enabled] = useState(true);
+  const [step2Enabled, setStep2Enabled] = useState(editingPlace?.visualsMediaEnabled !== false);
+  const [step3Enabled, setStep3Enabled] = useState(editingPlace?.bookEnabled !== false);
   const [locationCoordinatesEnabled, setLocationCoordinatesEnabled] = useState(true);
+
+  // Local media state for editing without global cross-record pollution
+  const [localVideos, setLocalVideos] = useState<VideoRecord[]>(videos);
+  const [localPdfs, setLocalPdfs] = useState<PdfDocument[]>(pdfDocuments);
 
   // Form Fields - Step 1
   const [coverImageUrl, setCoverImageUrl] = useState(editingPlace?.imageUrl || '');
@@ -123,18 +127,94 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
   };
 
   useEffect(() => {
-    if (!editingPlace) return;
+    if (!editingPlace) {
+      setCoverImageUrl('');
+      setPlaceTitle('');
+      setBadgeType('Heritage');
+      setDescription('');
+      setVernacularNames('');
+      setLatitude('');
+      setLongitude('');
+      setMapsUrl('');
+      setStep2Enabled(true);
+      setStep3Enabled(true);
+      setLocalVideos([]);
+      setLocalPdfs([]);
+      setDomesticFee('25');
+      setSaarcFee('50');
+      setForeignFee('300');
+      setStudentFee('10');
+      setStillCameraFee('0');
+      setVideoFee('0');
+      return;
+    }
     setCoverImageUrl(editingPlace.imageUrl || '');
-    setPlaceTitle(editingPlace.name);
-    setBadgeType(editingPlace.category);
+    setPlaceTitle(editingPlace.name || '');
+    setBadgeType(editingPlace.category || 'Heritage');
     setDescription(editingPlace.description || '');
+    setVernacularNames(editingPlace.subTitle || '');
+    setStep2Enabled(editingPlace.visualsMediaEnabled !== false);
+    setStep3Enabled(editingPlace.bookEnabled !== false);
     if (editingPlace.latitude) setLatitude(String(editingPlace.latitude));
     if (editingPlace.longitude) setLongitude(String(editingPlace.longitude));
     if (editingPlace.latitude && editingPlace.longitude) {
       setMapsUrl(`https://maps.google.com/?q=${editingPlace.latitude},${editingPlace.longitude}`);
     }
+    if (editingPlace.openingHours) {
+      const parts = editingPlace.openingHours.split('-');
+      if (parts[0]) setOpeningTime(parts[0].trim());
+      if (parts[1]) setClosingTime(parts[1].trim());
+    }
+
+    // Restore visitor tariffs
+    if (Array.isArray(editingPlace.visitorTariffs)) {
+      for (const t of editingPlace.visitorTariffs) {
+        const cat = (t.category || '').toLowerCase();
+        const price = (t.price || '').replace(/[^0-9]/g, '');
+        if (cat.includes('indian') || cat.includes('domestic')) setDomesticFee(price || '25');
+        else if (cat.includes('saarc') || cat.includes('bimstec')) setSaarcFee(price || '50');
+        else if (cat.includes('foreign')) setForeignFee(price || '300');
+        else if (cat.includes('student')) setStudentFee(price || '10');
+        else if (cat.includes('still')) setStillCameraFee(price || '0');
+        else if (cat.includes('video') || cat.includes('drone')) setVideoFee(price || '0');
+      }
+    }
+
+    // Restore media items into localVideos and localPdfs
+    if (Array.isArray(editingPlace.media)) {
+      const restoredVids: VideoRecord[] = editingPlace.media
+        .filter((m) => m?.type === 'video')
+        .map((m, idx) => ({
+          id: `vid-${idx}-${Date.now()}`,
+          title: m.alt || `Heritage Video Stream ${idx + 1}`,
+          subtitle: `${selectedState} State Heritage Series`,
+          url: m.url,
+          duration: '07:30 min',
+          quality: '4K UHD',
+          status: 'Active / Live',
+          thumbnail: 'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=400&q=80',
+        }));
+      setLocalVideos(restoredVids);
+
+      const restoredPdfs: PdfDocument[] = editingPlace.media
+        .filter((m) => m?.type === 'pdf')
+        .map((m, idx) => ({
+          id: `pdf-${idx}-${Date.now()}`,
+          title: m.alt || `Official Archival PDF ${idx + 1}`,
+          subtitle: `${selectedState} State Archaeology Document`,
+          url: m.url,
+          fileSize: '6.4 MB',
+          pages: '24 Pgs • PDF',
+          status: 'Active / Live',
+        }));
+      setLocalPdfs(restoredPdfs);
+    } else {
+      setLocalVideos([]);
+      setLocalPdfs([]);
+    }
+
     setSelectedDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
-  }, [editingPlace]);
+  }, [editingPlace, selectedState]);
 
   const toggleDay = (day: string) => {
     if (selectedDays.includes(day)) {
@@ -150,7 +230,8 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
       alert('Please provide both Video Title and YouTube Link.');
       return;
     }
-    onAddVideo({
+    const newVid: VideoRecord = {
+      id: `vid-${Date.now()}`,
       title: newVideoTitle,
       subtitle: 'Newly Added Stream',
       url: newVideoUrl,
@@ -159,9 +240,16 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
       status: 'Active / Live',
       thumbnail:
         'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=400&q=80',
-    });
+    };
+    setLocalVideos((prev) => [newVid, ...prev]);
+    onAddVideo?.(newVid);
     setNewVideoTitle('');
     setNewVideoUrl('');
+  };
+
+  const handleDeleteVideoItem = (id: string) => {
+    setLocalVideos((prev) => prev.filter((v) => v.id !== id));
+    onDeleteVideo?.(id);
   };
 
   const handleAddPdfSubmit = (e?: React.FormEvent) => {
@@ -170,33 +258,45 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
       alert('Please provide both PDF Name and Document URL.');
       return;
     }
-    onAddPdf({
+    const newPdf: PdfDocument = {
+      id: `pdf-${Date.now()}`,
       title: newPdfName,
       subtitle: `${selectedState} State Archaeology & Culture Series`,
       url: newPdfUrl,
       fileSize: '6.4 MB',
       pages: '24 Pgs • PDF',
       status: 'Active / Live',
-    });
+    };
+    setLocalPdfs((prev) => [newPdf, ...prev]);
+    onAddPdf?.(newPdf);
     setNewPdfName('');
     setNewPdfUrl('');
   };
 
-  const handleFinalPublish = () => {
+  const handleDeletePdfItem = (id: string) => {
+    setLocalPdfs((prev) => prev.filter((p) => p.id !== id));
+    onDeletePdf?.(id);
+  };
+
+  const buildPayload = (statusString: string) => {
     const latNum = parseFloat(latitude.replace(/[^0-9.-]/g, '')) || 0;
     const lngNum = parseFloat(longitude.replace(/[^0-9.-]/g, '')) || 0;
 
-    onPublish({
+    return {
+      id: editingPlace?.id,
       name: placeTitle,
       category: badgeType as any,
       city: selectedDistrict,
       subLocation: `${selectedDistrict} Circle`,
-      status: 'Published',
+      status: statusString,
       imageUrl: coverImageUrl,
       description,
+      subTitle: vernacularNames,
       openingHours: `${openingTime} - ${closingTime}`,
       latitude: latNum,
       longitude: lngNum,
+      visualsMediaEnabled: step2Enabled,
+      bookEnabled: step3Enabled,
       visitorTariffs: [
         { category: 'Indian Citizens', price: `₹${domesticFee}`, highlight: true },
         { category: 'SAARC Citizens', price: `₹${saarcFee}` },
@@ -206,39 +306,23 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
         { category: 'Video Camera', price: `₹${videoFee}` },
       ],
       media: [
-        { type: 'image', url: coverImageUrl, alt: placeTitle },
-        ...(step2Enabled ? videos.map((video) => ({ type: 'video', url: video.url, alt: video.title })) : []),
-        ...(step3Enabled ? pdfDocuments.map((pdf) => ({ type: 'pdf', url: pdf.url, alt: pdf.title })) : []),
+        ...(coverImageUrl ? [{ type: 'image', url: coverImageUrl, alt: placeTitle }] : []),
+        ...(step2Enabled ? localVideos.map((video) => ({ type: 'video', url: video.url, alt: video.title })) : []),
+        ...(step3Enabled ? localPdfs.map((pdf) => ({ type: 'pdf', url: pdf.url, alt: pdf.title })) : []),
       ],
-    });
+    };
+  };
+
+  const handleFinalPublish = () => {
+    onPublish(buildPayload('Published'), editingPlace?.id);
   };
 
   const handleSaveDraft = () => {
-    const latNum = parseFloat(latitude.replace(/[^0-9.-]/g, '')) || 0;
-    const lngNum = parseFloat(longitude.replace(/[^0-9.-]/g, '')) || 0;
+    onPublish(buildPayload('Draft (In Curation)'), editingPlace?.id);
+  };
 
-    onPublish({
-      name: placeTitle,
-      category: badgeType as any,
-      city: selectedDistrict,
-      subLocation: `${selectedDistrict} Circle`,
-      status: 'Draft (In Curation)',
-      imageUrl: coverImageUrl,
-      description,
-      openingHours: `${openingTime} - ${closingTime}`,
-      latitude: latNum,
-      longitude: lngNum,
-      visitorTariffs: [
-        { category: 'Indian Citizens', price: `₹${domesticFee}`, highlight: true },
-        { category: 'SAARC Citizens', price: `₹${saarcFee}` },
-        { category: 'Foreign Visitors', price: `₹${foreignFee}` },
-      ],
-      media: [
-        { type: 'image', url: coverImageUrl, alt: placeTitle },
-        ...(step2Enabled ? videos.map((video) => ({ type: 'video', url: video.url, alt: video.title })) : []),
-        ...(step3Enabled ? pdfDocuments.map((pdf) => ({ type: 'pdf', url: pdf.url, alt: pdf.title })) : []),
-      ],
-    });
+  const handleSubmitForReview = () => {
+    onPublish(buildPayload('Verification Pending'), editingPlace?.id);
   };
 
   return (
@@ -276,15 +360,24 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0 flex-wrap justify-end">
             <button
               id="top-save-draft-btn"
               type="button"
               onClick={handleSaveDraft}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-surface-container-lowest hover:bg-surface-container text-on-surface text-xs font-semibold border border-outline-variant/60 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface-container-lowest hover:bg-surface-container text-on-surface text-xs font-semibold border border-outline-variant/60 transition-colors shadow-sm"
             >
               <span className="material-symbols-outlined text-base text-secondary">save</span>
-              <span>Save as Draft</span>
+              <span>Save Draft</span>
+            </button>
+            <button
+              id="top-submit-review-btn"
+              type="button"
+              onClick={handleSubmitForReview}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 text-xs font-semibold border border-amber-300 transition-colors shadow-sm"
+            >
+              <span className="material-symbols-outlined text-base text-amber-800">rate_review</span>
+              <span>Submit for Verification</span>
             </button>
             <button
               id="top-publish-btn"
@@ -293,7 +386,7 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary hover:bg-primary-container text-white text-xs font-semibold shadow-sm transition-all"
             >
               <span className="material-symbols-outlined text-base">publish</span>
-              <span>Publish</span>
+              <span>Publish Live</span>
             </button>
           </div>
         </header>
@@ -1060,7 +1153,7 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="text-[0.68rem] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    {videos.length} Videos Configured
+                    {localVideos.length} Videos Configured
                   </span>
                 </div>
               </div>
@@ -1138,7 +1231,7 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-outline-variant/30 text-on-surface">
-                        {videos.map((vid) => (
+                        {localVideos.map((vid) => (
                           <tr
                             key={vid.id}
                             className="hover:bg-surface-container-low/50 transition-colors group"
@@ -1218,7 +1311,7 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => onDeleteVideo(vid.id)}
+                                  onClick={() => handleDeleteVideoItem(vid.id)}
                                   className="p-1 text-secondary hover:text-red-600 hover:bg-red-600/10 rounded transition-colors"
                                   title="Remove Video"
                                 >
@@ -1264,7 +1357,7 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
                   onClick={() => setCurrentStep(3)}
                   className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-primary hover:bg-primary-container text-white text-xs font-semibold shadow-sm transition-all"
                 >
-                  <span>Proceed to Step 3: Book &amp; Documentation →</span>
+                  <span>Proceed to Step 3: Documentation →</span>
                 </button>
               </div>
             </footer>
@@ -1296,7 +1389,7 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
                     <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    {pdfDocuments.length} Documents Configured
+                    {localPdfs.length} Documents Configured
                   </span>
                 </div>
               </div>
@@ -1386,7 +1479,7 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-outline-variant/30 bg-surface-container-lowest">
-                        {pdfDocuments.map((doc) => (
+                        {localPdfs.map((doc) => (
                           <tr
                             key={doc.id}
                             className="hover:bg-surface-bright/80 transition-colors group"
@@ -1453,7 +1546,7 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => onDeletePdf(doc.id)}
+                                  onClick={() => handleDeletePdfItem(doc.id)}
                                   className="p-1.5 text-secondary hover:text-error rounded hover:bg-red-50 transition-colors"
                                   title="Delete Document"
                                 >
@@ -1482,7 +1575,7 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
                 <span className="material-symbols-outlined text-base">arrow_back</span>
                 <span>Previous: Visuals &amp; Media</span>
               </button>
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-end flex-wrap">
                 <button
                   type="button"
                   onClick={handleSaveDraft}
@@ -1492,6 +1585,14 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
                     bookmark_border
                   </span>
                   <span>Save Draft</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitForReview}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 text-xs font-semibold border border-amber-300 transition-colors shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-base text-amber-800">rate_review</span>
+                  <span>Submit for Verification</span>
                 </button>
                 <button
                   id="final-publish-btn"

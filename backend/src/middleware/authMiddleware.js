@@ -22,7 +22,12 @@ export function requireUserToken(req, res, next) {
 	const result = verifyToken(req);
 	if (result.error) return res.status(result.status).json({ error: result.error });
 
-	req.user = result.payload;
+	const userId = result.payload.sub || result.payload.id || result.payload._id;
+	req.user = {
+		...result.payload,
+		id: userId,
+		_id: userId,
+	};
 	return next();
 }
 
@@ -31,12 +36,20 @@ export function requireAdminToken(req, res, next) {
 	if (result.error) return res.status(result.status).json({ error: result.error });
 
 	const role = result.payload.role;
-	const adminRoles = ['admin', 'super_admin', 'editor', 'reviewer'];
+	const adminRoles = ['admin', 'super_admin', 'editor', 'reviewer', 'state_admin', 'district_admin'];
 	if (!adminRoles.includes(role)) {
 		return res.status(403).json({ error: 'Forbidden: Admin access required' });
 	}
 
-	req.user = result.payload;
-	req.admin = result.payload;
+	const adminId = result.payload.sub || result.payload.id || result.payload._id;
+	const adminData = {
+		...result.payload,
+		id: adminId,
+		_id: adminId,
+	};
+
+	req.user = adminData;
+	req.admin = adminData;
 	return next();
 }
+

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { ViewType, HeritagePlace, VideoRecord, PdfDocument, AdminOfficer } from './types';
 import { Sidebar, MobileHeader } from './components';
 import {
@@ -9,21 +9,28 @@ import {
   AdminSignInPage as AdminSignInView,
 } from './pages';
 import {
+  createAdminDistrict,
   createAdminOfficer,
+  createAdminState,
   createContent,
   deleteContent,
   getAdminContent,
+  getAdminDistrictCategories,
   getAdminDistricts,
   getAdminOfficers,
   getAdminStates,
+  getAdminSummary,
   loginAdmin,
+  patchContentStatus,
   toContentPayload,
   toHeritagePlace,
   updateAdminDistrict,
+  updateAdminDistrictCategory,
   updateAdminOfficer,
   updateContent,
+  AdminSummary,
 } from './api';
-import { getSectionBySlug, getSectionTitle } from './config/sections';
+import { CITY_SECTIONS, CitySectionConfig, getSectionBySlug, getSectionTitle } from './config/sections';
 import {
   ImagePreviewModal,
   VideoPreviewModal,
@@ -34,7 +41,7 @@ import {
 } from './components/Modals';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<ViewType>('section');
+  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [selectedSection, setSelectedSection] = useState<string>('popular-places');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -51,51 +58,108 @@ export default function App() {
 
   // Core Data State
   const [places, setPlaces] = useState<HeritagePlace[]>([]);
+  const [editingPlace, setEditingPlace] = useState<HeritagePlace | null>(null);
+  const [categoryConfigs, setCategoryConfigs] = useState<Array<CitySectionConfig & { enabled: boolean }>>([]);
+  const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [videos, setVideos] = useState<VideoRecord[]>([]);
   const [pdfDocuments, setPdfDocuments] = useState<PdfDocument[]>([]);
   const [officers, setOfficers] = useState<AdminOfficer[]>([]);
   const [adminToken, setAdminToken] = useState<string | null>(() => sessionStorage.getItem('dharohar_admin_token'));
   const [statesAndDistricts, setStatesAndDistricts] = useState<Record<string, string[]>>({});
+  const [stateRecordMap, setStateRecordMap] = useState<Record<string, { _id: string; name: string; code: string }>>({});
+  const [districtRecordMap, setDistrictRecordMap] = useState<Record<string, { _id: string; name: string; stateId: string; coverImage?: string }>>({});
 
+  // Initial Boot & Authentication Validation
   useEffect(() => {
     if (!adminToken) return;
     Promise.all([getAdminOfficers(adminToken), getAdminStates(adminToken)])
       .then(async ([adminList, states]) => {
+        const stateMap: Record<string, { _id: string; name: string; code: string }> = {};
+        states.forEach((st) => {
+          stateMap[st.name] = st;
+        });
+        setStateRecordMap(stateMap);
+
         const districtRecords = await Promise.all(
           states.map(async (state) => [state, await getAdminDistricts(adminToken, state._id)] as const)
         );
-        const entries = districtRecords.map(([state, districts]) => [state.name, districts.map((d) => d.name)] as const);
-        const firstDistrict = districtRecords[0]?.[1]?.[0];
+
+        const distMap: Record<string, { _id: string; name: string; stateId: string; coverImage?: string }> = {};
+        const entries = districtRecords.map(([state, districts]) => {
+          districts.forEach((d) => {
+            distMap[`${state.name}:${d.name}`] = d;
+          });
+          return [state.name, districts.map((d) => d.name)] as const;
+        });
+
         setOfficers(adminList);
         setStatesAndDistricts(Object.fromEntries(entries));
-        if (states[0]) setSelectedState(states[0].name);
+        setDistrictRecordMap(distMap);
+
+        const firstState = states[0]?.name || 'Madhya Pradesh';
+        const firstDistricts = districtRecords.find(([st]) => st.name === firstState)?.[1] || districtRecords[0]?.[1] || [];
+        const firstDistrict = firstDistricts[0];
+
+        if (states[0]) setSelectedState(firstState);
         if (firstDistrict) {
           setSelectedDistrict(firstDistrict.name);
           setSelectedDistrictId(firstDistrict._id);
           setCityBannerUrl(firstDistrict.coverImage || '');
-          const scopedContent = await getAdminContent(adminToken, firstDistrict._id, selectedSection);
+
+          // Load District Scoped Data
+          const [scopedContent, catConfigs, summaryMetrics] = await Promise.all([
+            getAdminContent(adminToken, firstDistrict._id),
+            getAdminDistrictCategories(adminToken, firstDistrict._id).catch(() =>
+              CITY_SECTIONS.map((s) => ({ ...s, enabled: true }))
+            ),
+            getAdminSummary(adminToken, firstDistrict._id).catch(() => null),
+          ]);
           setPlaces(scopedContent.map(toHeritagePlace));
+          setCategoryConfigs(catConfigs);
+          setSummary(summaryMetrics);
         } else {
           setPlaces([]);
         }
+
         setIsAuthenticated(true);
         setCurrentOfficer(adminList[0]);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('Session validation error:', err);
         sessionStorage.removeItem('dharohar_admin_token');
         setAdminToken(null);
       });
   }, [adminToken]);
 
+  // Load Content, Categories & Summary on Workspace Scope Changes
+  const loadScopedData = useCallback(async (districtId: string, sectionSlug?: string, view?: ViewType) => {
+    if (!adminToken || !districtId) return;
+    try {
+      const activeView = view || currentView;
+      const targetSection = activeView === 'dashboard' ? undefined : (sectionSlug || selectedSection);
+
+      const [contentData, catConfigs, summaryData] = await Promise.all([
+        getAdminContent(adminToken, districtId, targetSection),
+        getAdminDistrictCategories(adminToken, districtId).catch(() =>
+          CITY_SECTIONS.map((s) => ({ ...s, enabled: true }))
+        ),
+        getAdminSummary(adminToken, districtId).catch(() => null),
+      ]);
+
+      setPlaces(contentData.map(toHeritagePlace));
+      setCategoryConfigs(catConfigs);
+      setSummary(summaryData);
+    } catch (err) {
+      console.error('Failed to load district scoped data:', err);
+      setPlaces([]);
+    }
+  }, [adminToken, currentView, selectedSection]);
+
   useEffect(() => {
-    if (!adminToken || !selectedDistrictId) return;
-    getAdminContent(adminToken, selectedDistrictId, selectedSection)
-      .then((content) => setPlaces(content.map(toHeritagePlace)))
-      .catch((err) => {
-        console.error('Failed to load section content:', err);
-        setPlaces([]);
-      });
-  }, [adminToken, selectedDistrictId, selectedSection]);
+    if (selectedDistrictId) {
+      loadScopedData(selectedDistrictId, selectedSection, currentView);
+    }
+  }, [selectedDistrictId, selectedSection, currentView, loadScopedData]);
 
   // Modals State
   const [previewImage, setPreviewImage] = useState<{
@@ -113,32 +177,52 @@ export default function App() {
   const [isInviteAdminOpen, setIsInviteAdminOpen] = useState(false);
   const [isAddJurisdictionOpen, setIsAddJurisdictionOpen] = useState(false);
 
-  const handleStateChange = (state: string) => {
+  // State Change Handler
+  const handleStateChange = async (state: string) => {
     setSelectedState(state);
     const newDistricts = statesAndDistricts[state] || [];
-    setSelectedDistrict(newDistricts[0] || '');
+    const firstDistrict = newDistricts[0] || '';
+    setSelectedDistrict(firstDistrict);
+
     if (!adminToken) return;
-    getAdminStates(adminToken).then(async (states) => {
-      const stateRecord = states.find((item) => item.name === state);
-      if (!stateRecord) return;
-      const districts = await getAdminDistricts(adminToken, stateRecord._id);
-      const target = districts[0];
-      setSelectedDistrictId(target?._id || '');
-      setCityBannerUrl(target?.coverImage || '');
-    });
+    try {
+      const stateObj = stateRecordMap[state] || (await getAdminStates(adminToken)).find((s) => s.name === state);
+      if (!stateObj) return;
+      const districts = await getAdminDistricts(adminToken, stateObj._id);
+      const target = districts.find((d) => d.name === firstDistrict) || districts[0];
+      if (target) {
+        setSelectedDistrict(target.name);
+        setSelectedDistrictId(target._id);
+        setCityBannerUrl(target.coverImage || '');
+      }
+    } catch (err) {
+      console.error('Error changing state:', err);
+    }
   };
 
-  const handleDistrictChange = (district: string) => {
+  // District Change Handler
+  const handleDistrictChange = async (district: string) => {
     setSelectedDistrict(district);
     if (!adminToken) return;
-    getAdminStates(adminToken).then(async (states) => {
-      const stateRecord = states.find((item) => item.name === selectedState);
-      if (!stateRecord) return;
-      const districts = await getAdminDistricts(adminToken, stateRecord._id);
-      const target = districts.find((item) => item.name === district);
-      setSelectedDistrictId(target?._id || '');
-      setCityBannerUrl(target?.coverImage || '');
-    });
+    try {
+      const key = `${selectedState}:${district}`;
+      const cachedDistrict = districtRecordMap[key];
+      if (cachedDistrict) {
+        setSelectedDistrictId(cachedDistrict._id);
+        setCityBannerUrl(cachedDistrict.coverImage || '');
+        return;
+      }
+      const stateObj = stateRecordMap[selectedState] || (await getAdminStates(adminToken)).find((s) => s.name === selectedState);
+      if (!stateObj) return;
+      const districts = await getAdminDistricts(adminToken, stateObj._id);
+      const target = districts.find((d) => d.name === district) || districts[0];
+      if (target) {
+        setSelectedDistrictId(target._id);
+        setCityBannerUrl(target.coverImage || '');
+      }
+    } catch (err) {
+      console.error('Error changing district:', err);
+    }
   };
 
   const handleSaveCityBanner = async (url: string) => {
@@ -146,48 +230,126 @@ export default function App() {
     if (!adminToken || !selectedDistrictId) return;
     try {
       await updateAdminDistrict(adminToken, selectedDistrictId, { coverImage: url });
-      setAuthToast('City cover image updated successfully in database!');
+      setAuthToast('District cover image updated successfully in database!');
       setTimeout(() => setAuthToast(null), 3000);
     } catch (err) {
-      console.error('Failed to update city cover image:', err);
-      alert('Failed to update city cover image in database');
+      console.error('Failed to update district cover image:', err);
+      alert('Failed to update district cover image in database');
     }
   };
 
-  const handleAddJurisdiction = (state: string, district: string) => {
-    setStatesAndDistricts((current) => ({ ...current, [state]: [...(current[state] || []), district] }));
-    setSelectedState(state);
-    setSelectedDistrict(district);
-  };
-
-  // Place operations
-  const handlePublishNewPlace = async (newPlaceData: Partial<HeritagePlace>) => {
+  // Add Jurisdiction (State + District)
+  const handleAddJurisdiction = async (stateName: string, districtName: string) => {
     if (!adminToken) return;
     try {
-      let targetDistrictId = selectedDistrictId;
-      if (!targetDistrictId) {
-        const states = await getAdminStates(adminToken);
-        const stateRecord = states.find((item) => item.name === selectedState);
-        if (stateRecord) {
-          const districts = await getAdminDistricts(adminToken, stateRecord._id);
-          targetDistrictId = districts.find((item) => item.name === selectedDistrict)?._id || '';
+      // 1. Get or Create State
+      let stateRecord: { _id: string; name: string; code: string } | undefined = stateRecordMap[stateName];
+      if (!stateRecord) {
+        const allStates = await getAdminStates(adminToken);
+        stateRecord = allStates.find((s) => s.name.toLowerCase() === stateName.toLowerCase());
+        if (!stateRecord) {
+          const words = stateName.trim().split(/\s+/);
+          let baseCode = words.length > 1
+            ? words.map((w) => w[0]).join('').slice(0, 4).toUpperCase()
+            : stateName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase();
+          if (baseCode.length < 2) baseCode = (stateName.toUpperCase() + 'ST').slice(0, 3);
+          
+          let code = baseCode;
+          let counter = 1;
+          while (allStates.some((s) => s.code.toUpperCase() === code.toUpperCase())) {
+            code = `${baseCode.slice(0, 2)}${counter++}`;
+          }
+          stateRecord = await createAdminState(adminToken, { name: stateName, code, active: true });
         }
       }
-      if (!targetDistrictId) {
-        alert('Please select a valid district before creating content.');
-        return;
+
+      if (!stateRecord) {
+        throw new Error('Could not resolve or create state');
       }
-      const created = await createContent(
-        adminToken,
-        toContentPayload(newPlaceData, targetDistrictId, selectedSection)
+
+      // 2. Create District
+      const createdDistrict = await createAdminDistrict(adminToken, {
+        stateId: stateRecord._id,
+        name: districtName,
+        active: true,
+      });
+
+      // 3. Update local caches
+      setStatesAndDistricts((current) => ({
+        ...current,
+        [stateName]: Array.from(new Set([...(current[stateName] || []), districtName])),
+      }));
+      setDistrictRecordMap((current) => ({
+        ...current,
+        [`${stateName}:${districtName}`]: createdDistrict,
+      }));
+
+      setSelectedState(stateName);
+      setSelectedDistrict(districtName);
+      setSelectedDistrictId(createdDistrict._id);
+      setCityBannerUrl('');
+
+      setAuthToast(`Registered ${districtName} District under ${stateName} successfully!`);
+      setTimeout(() => setAuthToast(null), 3000);
+    } catch (err) {
+      console.error('Failed to create jurisdiction:', err);
+      alert('Failed to create jurisdiction in database: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
+  };
+
+  // Category Status Toggle Handler (District-Scoped)
+  const handleToggleCategoryStatus = async (categorySlug: string, enabled: boolean) => {
+    if (!adminToken || !selectedDistrictId) return;
+    try {
+      await updateAdminDistrictCategory(adminToken, selectedDistrictId, categorySlug, enabled);
+      setCategoryConfigs((prev) =>
+        prev.map((c) => (c.slug === categorySlug ? { ...c, enabled } : c))
       );
-      setPlaces((current) => [toHeritagePlace(created), ...current]);
-      setAuthToast(`Published "${newPlaceData.name || 'New Record'}" to ${getSectionTitle(selectedSection)}`);
+      setAuthToast(
+        `"${getSectionTitle(categorySlug)}" is now ${enabled ? 'Enabled' : 'Disabled'} for ${selectedDistrict}`
+      );
+      setTimeout(() => setAuthToast(null), 3000);
+    } catch (err) {
+      console.error('Failed to update category status:', err);
+      alert('Failed to update category status in database');
+    }
+  };
+
+  // Place operations (Create or Update Existing Record)
+  const handleSavePlaceRecord = async (placeData: Partial<HeritagePlace>, existingId?: string) => {
+    if (!adminToken || !selectedDistrictId) {
+      alert('Please select a valid district workspace before saving records.');
+      return;
+    }
+
+    try {
+      if (existingId) {
+        // UPDATE EXISTING RECORD
+        const updated = await updateContent(
+          adminToken,
+          existingId,
+          toContentPayload(placeData, selectedDistrictId, selectedSection)
+        );
+        const mapped = toHeritagePlace(updated);
+        setPlaces((prev) => prev.map((p) => (p.id === existingId ? mapped : p)));
+        setAuthToast(`Updated "${placeData.name || 'Heritage Record'}" in database`);
+      } else {
+        // CREATE NEW RECORD
+        const created = await createContent(
+          adminToken,
+          toContentPayload(placeData, selectedDistrictId, selectedSection)
+        );
+        const mapped = toHeritagePlace(created);
+        setPlaces((prev) => [mapped, ...prev]);
+        setAuthToast(`Created "${placeData.name || 'New Record'}" under ${selectedDistrict}`);
+      }
+
+      setEditingPlace(null);
       setCurrentView('section');
       setTimeout(() => setAuthToast(null), 3000);
     } catch (err: unknown) {
-      console.error('Failed to publish record:', err);
-      alert('Error publishing record: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      console.error('Failed to save record:', err);
+      alert('Error saving record: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
   };
 
@@ -212,7 +374,7 @@ export default function App() {
     if (!adminToken) return;
     const newStatus = place.status === 'Published' ? 'draft' : 'published';
     try {
-      await updateContent(adminToken, place.id, { status: newStatus });
+      await patchContentStatus(adminToken, place.id, newStatus);
       setPlaces((prev) =>
         prev.map((p) =>
           p.id === place.id
@@ -220,11 +382,11 @@ export default function App() {
             : p
         )
       );
-      setAuthToast(`Record status updated to ${newStatus}`);
+      setAuthToast(`Record status updated to "${newStatus}" in database.`);
       setTimeout(() => setAuthToast(null), 2500);
     } catch (err) {
       console.error('Failed to toggle status:', err);
-      alert('Failed to update record status');
+      alert('Failed to update record status: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
   };
 
@@ -249,7 +411,14 @@ export default function App() {
   };
 
   // Admin Officer Operations
-  const handleInviteAdmin = async (officer: { name: string; email: string; role: 'super_admin' | 'editor'; password?: string }) => {
+  const handleInviteAdmin = async (officer: {
+    name: string;
+    email: string;
+    role: 'super_admin' | 'state_admin' | 'district_admin' | 'editor' | 'reviewer';
+    password?: string;
+    stateId?: string;
+    cityId?: string;
+  }) => {
     if (!adminToken) return;
     try {
       const created = await createAdminOfficer(adminToken, {
@@ -257,9 +426,11 @@ export default function App() {
         email: officer.email,
         password: officer.password || 'Dharohar@2026',
         role: officer.role || 'editor',
+        stateId: officer.stateId,
+        cityId: officer.cityId,
       });
       setOfficers((prev) => [created, ...prev]);
-      setAuthToast(`Admin Invitation sent to ${officer.email}`);
+      setAuthToast(`Admin Officer created successfully for ${officer.email}`);
       setTimeout(() => setAuthToast(null), 3000);
     } catch (err: unknown) {
       alert('Failed to create admin officer: ' + (err instanceof Error ? err.message : 'Unknown error'));
@@ -298,11 +469,17 @@ export default function App() {
   const handleNavigate = (view: ViewType, sectionSlug?: string) => {
     if (view === 'section' && sectionSlug) {
       setSelectedSection(sectionSlug);
+      setEditingPlace(null);
       setCurrentView('section');
     } else if (view === 'popular-places') {
       setSelectedSection('popular-places');
+      setEditingPlace(null);
       setCurrentView('section');
+    } else if (view === 'add-record') {
+      setEditingPlace(null);
+      setCurrentView('add-record');
     } else {
+      setEditingPlace(null);
       setCurrentView(view);
     }
   };
@@ -337,6 +514,10 @@ export default function App() {
       </>
     );
   }
+
+  // Active Category Config for Current Section
+  const currentCategoryConfig = categoryConfigs.find((c) => c.slug === selectedSection);
+  const isCurrentCategoryActive = currentCategoryConfig ? currentCategoryConfig.enabled !== false : true;
 
   return (
     <div className="flex h-screen bg-surface text-on-surface overflow-hidden font-sans antialiased">
@@ -377,7 +558,10 @@ export default function App() {
           currentView={currentView}
           selectedState={selectedState}
           selectedDistrict={selectedDistrict}
-          onNavigateAddRecord={() => setCurrentView('add-record')}
+          onNavigateAddRecord={() => {
+            setEditingPlace(null);
+            setCurrentView('add-record');
+          }}
           currentOfficer={currentOfficer}
         />
 
@@ -388,14 +572,29 @@ export default function App() {
               onNavigate={handleNavigate}
               selectedState={selectedState}
               selectedDistrict={selectedDistrict}
+              selectedDistrictId={selectedDistrictId}
               onSelectJurisdiction={(state, district) => {
                 setSelectedState(state);
                 setSelectedDistrict(district);
-                setSelectedSection('popular-places');
-                setCurrentView('section');
+                handleDistrictChange(district);
               }}
               cityBannerUrl={cityBannerUrl}
               onSaveCityBanner={handleSaveCityBanner}
+              summary={summary}
+              places={places}
+              categoryConfigs={categoryConfigs}
+              onToggleCategoryStatus={(slug, enabled) => handleToggleCategoryStatus(slug, enabled)}
+              onEditPlace={(p) => {
+                setEditingPlace(p);
+                setCurrentView('add-record');
+              }}
+              onViewPlace={(p) => setViewPlace(p)}
+              onDeletePlace={handleDeletePlace}
+              onQuickPublishPlace={handleTogglePublishPlace}
+              onNavigateAddRecord={() => {
+                setEditingPlace(null);
+                setCurrentView('add-record');
+              }}
             />
           )}
 
@@ -405,8 +604,16 @@ export default function App() {
               sectionTitle={getSectionTitle(selectedSection)}
               sectionDescription={getSectionBySlug(selectedSection)?.description}
               places={places}
-              onNavigateAddRecord={() => setCurrentView('add-record')}
-              onEditPlace={() => setCurrentView('add-record')}
+              isCategoryActive={isCurrentCategoryActive}
+              onToggleCategoryStatus={(enabled) => handleToggleCategoryStatus(selectedSection, enabled)}
+              onNavigateAddRecord={() => {
+                setEditingPlace(null);
+                setCurrentView('add-record');
+              }}
+              onEditPlace={(p) => {
+                setEditingPlace(p);
+                setCurrentView('add-record');
+              }}
               onViewPlace={(p) => setViewPlace(p)}
               onDeletePlace={handleDeletePlace}
               onQuickPublishPlace={handleTogglePublishPlace}
@@ -417,8 +624,12 @@ export default function App() {
 
           {currentView === 'add-record' && (
             <AddRecordWizard
-              onCancel={() => setCurrentView('section')}
-              onPublish={handlePublishNewPlace}
+              editingPlace={editingPlace}
+              onCancel={() => {
+                setEditingPlace(null);
+                setCurrentView('section');
+              }}
+              onPublish={handleSavePlaceRecord}
               selectedState={selectedState}
               selectedDistrict={selectedDistrict}
               videos={videos}
@@ -467,6 +678,7 @@ export default function App() {
         onClose={() => setViewPlace(null)}
         place={viewPlace}
         onEdit={() => {
+          if (viewPlace) setEditingPlace(viewPlace);
           setViewPlace(null);
           setCurrentView('add-record');
         }}
@@ -477,6 +689,9 @@ export default function App() {
         onClose={() => setIsInviteAdminOpen(false)}
         onAddOfficer={handleInviteAdmin}
         selectedState={selectedState}
+        selectedDistrict={selectedDistrict}
+        selectedStateId={stateRecordMap[selectedState]?._id}
+        selectedDistrictId={selectedDistrictId}
       />
 
       <AddJurisdictionModal

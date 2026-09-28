@@ -10,6 +10,10 @@ const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '5mb' }));
 
+app.get('/', (req, res) => {
+	res.send('Welcome to the Dharohar API');
+});
+
 app.get('/health', (req, res) => {
 	res.json({ ok: true });
 });

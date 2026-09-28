@@ -3,6 +3,7 @@ import State from '../models/State.js';
 import City from '../models/City.js';
 import User from '../models/User.js';
 import { slugify } from '../utils/auth.js';
+import { seedCategories } from '../scripts/seedCategories.js';
 
 const directory = [
 	{
@@ -159,6 +160,9 @@ export async function seedDirectoryIfEmpty() {
 			});
 		}
 	}
+
+	// 3. Seed Canonical Categories
+	await seedCategories();
 
 	console.log('Database directory and administrative user synchronization complete.');
 }

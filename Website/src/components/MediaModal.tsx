@@ -98,15 +98,14 @@ export const MediaModal: React.FC<MediaModalProps> = ({ media, onClose }) => {
           {showTranscript && (
             <div className="p-3 bg-black/40 rounded-lg text-xs text-neutral-300 border border-white/10 font-sans">
               <strong className="block text-[#ffe088] mb-1 font-mono uppercase text-[10px]">
-                Audio Commentary Transcript (ASI Archives):
+                Audio Commentary Transcript (National Digital Archives):
               </strong>
-              "Standing before the monumental gateway of Rajwada, we observe the basalt masonry of
-              the 1760s giving way to intricate Sal and Teak timber brackets..."
+              "{media.description || `Standing before the monumental site of ${media.title}, we observe the verified historical documentation and architectural preservation recorded under the Dharohar National Registry.`}"
             </div>
           )}
 
           <div className="flex flex-wrap items-center justify-between pt-3 border-t border-white/10 text-xs text-neutral-400">
-            <span>Repository: National Photographic Archive • ASI Bhopal Circle</span>
+            <span>Repository: {media.meta || 'National Heritage Photographic Archive'}</span>
             <button
               onClick={() => alert('Ultra-HD 4K Photogrammetric asset requested for download.')}
               className="text-[#ffe088] hover:underline flex items-center gap-1 font-semibold cursor-pointer"

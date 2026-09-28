@@ -1,36 +1,67 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { AdminSummary } from '../api';
-import { ViewType, MetricItem, JurisdictionLedgerItem } from '../types';
+import { ViewType, MetricItem, JurisdictionLedgerItem, HeritagePlace, FilterTabItem } from '../types';
 import { MetricCard } from '../components/common/MetricCard';
+import { FilterTabs } from '../components/common/FilterTabs';
+import { PlaceTableRow } from '../components/common/PlaceTableRow';
+import { Pagination } from '../components/common/Pagination';
+import { CITY_SECTIONS, CitySectionConfig } from '../config/sections';
+import { MapPin, Plus, Layers, ArrowUpRight, CheckCircle2, XCircle } from 'lucide-react';
 
 export interface DashboardPageProps {
-  onNavigate: (view: ViewType) => void;
+  onNavigate: (view: ViewType, sectionSlug?: string) => void;
   selectedState: string;
   selectedDistrict: string;
+  selectedDistrictId?: string;
   onSelectJurisdiction: (state: string, district: string) => void;
   metrics?: MetricItem[];
   ledger?: JurisdictionLedgerItem[];
   cityBannerUrl: string;
   onSaveCityBanner: (url: string) => void;
   summary?: AdminSummary | null;
+  places: HeritagePlace[];
+  categoryConfigs?: Array<CitySectionConfig & { enabled: boolean }>;
+  onToggleCategoryStatus?: (categorySlug: string, enabled: boolean) => void;
+  onEditPlace?: (place: HeritagePlace) => void;
+  onViewPlace?: (place: HeritagePlace) => void;
+  onDeletePlace?: (id: string) => void;
+  onQuickPublishPlace?: (place: HeritagePlace) => void;
+  onNavigateAddRecord?: () => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigate,
   selectedState,
   selectedDistrict,
+  selectedDistrictId,
   onSelectJurisdiction,
   metrics,
   ledger,
   cityBannerUrl,
   onSaveCityBanner,
   summary,
+  places = [],
+  categoryConfigs = [],
+  onToggleCategoryStatus,
+  onEditPlace,
+  onViewPlace,
+  onDeletePlace,
+  onQuickPublishPlace,
+  onNavigateAddRecord,
 }) => {
-  const [filterQuery, setFilterQuery] = React.useState('');
-  const [showFilterBar, setShowFilterBar] = React.useState(false);
-  const [showCityImage, setShowCityImage] = React.useState(false);
-  const [draftCityImageUrl, setDraftCityImageUrl] = React.useState(cityBannerUrl);
-  const [imageError, setImageError] = React.useState(false);
+  const [filterQuery, setFilterQuery] = useState('');
+  const [ledgerStateFilter, setLedgerStateFilter] = useState('ALL');
+  const [ledgerDistrictFilter, setLedgerDistrictFilter] = useState('ALL');
+  const [showFilterBar, setShowFilterBar] = useState(false);
+  const [showCityImage, setShowCityImage] = useState(false);
+  const [draftCityImageUrl, setDraftCityImageUrl] = useState(cityBannerUrl);
+  const [imageError, setImageError] = useState(false);
+
+  // Table State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'all' | 'published' | 'draft' | 'review'>('all');
+  const [rowsPerPage, setRowsPerPage] = useState('10');
+  const [currentPage, setCurrentPage] = useState(1);
 
   React.useEffect(() => {
     setDraftCityImageUrl(cityBannerUrl);
@@ -44,52 +75,226 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     setShowCityImage(false);
   };
 
-  const displayMetrics = metrics || (summary ? [
-    { id: 'dash-active-users', title: 'Total Active Users', value: summary.users.active.toLocaleString(), icon: 'group', subtitle: 'Registered custodians', iconContainerClass: 'bg-surface-container text-primary' },
-    { id: 'dash-places-published', title: 'Places Published', value: summary.content.published.toLocaleString(), icon: 'fort', subtitle: 'Verified heritage sites', actionLabel: 'View ->', onClick: () => onNavigate('popular-places'), iconContainerClass: 'bg-surface-container text-primary' },
-    { id: 'dash-in-review', title: 'In Review / Pending', value: summary.content.review.toLocaleString(), icon: 'pending_actions', subtitle: 'Pending circular review', iconContainerClass: 'bg-surface-container text-secondary' },
-    { id: 'dash-states-uts', title: 'States & UTs', value: summary.coverage.activeStates.toLocaleString(), icon: 'map', subtitle: 'Active jurisdictions', iconContainerClass: 'bg-surface-container text-secondary' },
-    { id: 'dash-districts', title: 'Districts', value: summary.coverage.activeDistricts.toLocaleString(), icon: 'location_city', subtitle: 'Covered jurisdictions', iconContainerClass: 'bg-surface-container text-secondary' },
-  ] : []);
-
   const liveLedger = ledger || summary?.ledger || [];
 
-  const filteredLedger = liveLedger.filter(
-    (item) =>
-      item.state.toLowerCase().includes(filterQuery.toLowerCase()) ||
-      item.district.toLowerCase().includes(filterQuery.toLowerCase()) ||
-      item.activeCategories.toLowerCase().includes(filterQuery.toLowerCase())
+  // Derive unique states and districts for KPIs and ledger filters
+  const { uniqueStatesList, uniqueStatesCount, totalDistrictsCount } = useMemo(() => {
+    const stateSet = new Set<string>();
+    liveLedger.forEach((item) => {
+      if (item.state && item.state !== 'National') {
+        stateSet.add(item.state);
+      }
+    });
+    if (selectedState) stateSet.add(selectedState);
+    const states = Array.from(stateSet).sort();
+    const countStates = summary?.coverage?.activeStates || states.length || 1;
+    const countDistricts = summary?.coverage?.activeDistricts || liveLedger.length || 1;
+    return {
+      uniqueStatesList: states,
+      uniqueStatesCount: countStates,
+      totalDistrictsCount: countDistricts,
+    };
+  }, [liveLedger, selectedState, summary]);
+
+  // Available districts for the selected state in ledger filter
+  const ledgerDistrictsForState = useMemo(() => {
+    if (ledgerStateFilter === 'ALL') {
+      const dists = Array.from(new Set(liveLedger.map((item) => item.district))).sort();
+      return dists;
+    }
+    const dists = Array.from(
+      new Set(liveLedger.filter((item) => item.state === ledgerStateFilter).map((item) => item.district))
+    ).sort();
+    return dists;
+  }, [liveLedger, ledgerStateFilter]);
+
+  // Real, Scoped Metrics for the Dashboard
+  const displayMetrics = useMemo(() => {
+    if (metrics) return metrics;
+
+    const publishedCount = places.filter((p) => p.status === 'Published').length;
+    const draftCount = places.filter((p) => p.status.includes('Draft')).length;
+    const reviewCount = places.filter((p) => p.status === 'Verification Pending').length;
+
+    return [
+      {
+        id: 'dash-total-states',
+        title: 'Total States',
+        value: uniqueStatesCount.toLocaleString(),
+        icon: 'map',
+        subtitle: 'Unique State Circles',
+        iconContainerClass: 'bg-primary/10 text-primary',
+        badge: { text: 'National', variant: 'primary' as const },
+      },
+      {
+        id: 'dash-total-districts',
+        title: 'Total Districts',
+        value: totalDistrictsCount.toLocaleString(),
+        icon: 'location_city',
+        subtitle: 'Monitored Jurisdictions',
+        iconContainerClass: 'bg-amber-50 text-amber-800',
+        badge: { text: 'Active Circles', variant: 'amber' as const },
+      },
+      {
+        id: 'dash-district-total',
+        title: 'District Records',
+        value: places.length.toLocaleString(),
+        icon: 'account_balance',
+        subtitle: `${selectedDistrict}, ${selectedState}`,
+        iconContainerClass: 'bg-surface-container text-primary',
+        badge: { text: 'Current Scope', variant: 'primary' as const },
+      },
+      {
+        id: 'dash-places-published',
+        title: 'Published & Live',
+        value: publishedCount.toLocaleString(),
+        valueColorClass: 'text-emerald-700',
+        icon: 'public',
+        subtitle: 'Publicly live in registry',
+        iconContainerClass: 'bg-emerald-50 text-emerald-700',
+        badge: { text: 'Active', variant: 'emerald' as const },
+      },
+      {
+        id: 'dash-in-draft',
+        title: 'Draft & Review',
+        value: (draftCount + reviewCount).toLocaleString(),
+        valueColorClass: 'text-amber-800',
+        icon: 'edit_note',
+        subtitle: `${draftCount} Draft • ${reviewCount} Pending`,
+        iconContainerClass: 'bg-amber-50 text-amber-700',
+        badge: { text: 'In Pipeline', variant: 'neutral' as const },
+      },
+    ];
+  }, [metrics, places, uniqueStatesCount, totalDistrictsCount, selectedDistrict, selectedState]);
+
+  // Tab counts for the table
+  const tabCounts = useMemo(() => {
+    const published = places.filter((p) => p.status === 'Published').length;
+    const draft = places.filter((p) => p.status.includes('Draft')).length;
+    const review = places.filter((p) => p.status === 'Verification Pending').length;
+    return {
+      all: places.length.toLocaleString(),
+      published: published.toLocaleString(),
+      draft: draft.toLocaleString(),
+      review: review.toLocaleString(),
+    };
+  }, [places]);
+
+  const filterTabs: FilterTabItem<'all' | 'published' | 'draft' | 'review'>[] = [
+    {
+      id: 'all',
+      label: 'All Records',
+      count: tabCounts.all,
+      badgeClass: 'bg-surface-container text-on-surface-variant',
+    },
+    {
+      id: 'published',
+      label: 'Published',
+      dotColor: 'bg-emerald-500',
+      count: tabCounts.published,
+      badgeClass: 'bg-emerald-50 text-emerald-800',
+    },
+    {
+      id: 'draft',
+      label: 'Draft',
+      dotColor: 'bg-amber-500',
+      count: tabCounts.draft,
+      badgeClass: 'bg-amber-50 text-amber-800',
+    },
+    {
+      id: 'review',
+      label: 'In Review',
+      dotColor: 'bg-tertiary',
+      count: tabCounts.review,
+      badgeClass: 'bg-red-50 text-tertiary',
+    },
+  ];
+
+  const filteredPlaces = places.filter((p) => {
+    const matchesSearch =
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.section && p.section.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    if (!matchesSearch) return false;
+    if (activeTab === 'all') return true;
+    if (activeTab === 'published') return p.status === 'Published';
+    if (activeTab === 'draft') return p.status.includes('Draft');
+    if (activeTab === 'review') return p.status === 'Verification Pending';
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredPlaces.length / parseInt(rowsPerPage, 10)));
+  const paginatedPlaces = filteredPlaces.slice(
+    (currentPage - 1) * parseInt(rowsPerPage, 10),
+    currentPage * parseInt(rowsPerPage, 10)
   );
+
+  const filteredLedger = liveLedger.filter((item) => {
+    if (ledgerStateFilter !== 'ALL' && item.state !== ledgerStateFilter) {
+      return false;
+    }
+    if (ledgerDistrictFilter !== 'ALL' && item.district !== ledgerDistrictFilter) {
+      return false;
+    }
+    if (filterQuery.trim()) {
+      const q = filterQuery.toLowerCase().trim();
+      const matchState = item.state.toLowerCase().includes(q);
+      const matchDistrict = item.district.toLowerCase().includes(q);
+      const matchCat = item.activeCategories?.toLowerCase().includes(q);
+      return matchState || matchDistrict || matchCat;
+    }
+    return true;
+  });
 
   return (
     <main
       id="dashboard-main-view"
-      className="w-full flex-1 px-4 md:px-7 py-6 space-y-6 max-w-[1720px] mx-auto select-text"
+      className="w-full flex-1 px-4 md:px-7 py-6 space-y-6 max-w-[1720px] mx-auto select-text animate-fade-in"
     >
-      {/* Header & Subtitle */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-surface-container">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="font-display text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
-              Dharohar Dashboard
-            </h1>
-            <span className="text-[0.65rem] font-semibold px-2 py-0.5 rounded bg-surface-container text-on-surface-variant border border-surface-container uppercase tracking-wider">
-              National Portal
+      {/* Executive Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-surface-container">
+        <div className="space-y-1.5">
+          {/* Strict Context Badge */}
+          <div className="flex items-center gap-2 text-xs font-semibold text-secondary flex-wrap">
+            <span className="text-[0.66rem] font-bold uppercase tracking-wider text-primary bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/20 flex items-center gap-1">
+              <MapPin className="w-3 h-3 text-primary" />
+              <span>{selectedState}</span>
+            </span>
+            <span className="text-secondary font-bold">→</span>
+            <span className="text-[0.66rem] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+              {selectedDistrict} District
+            </span>
+            <span className="text-[0.62rem] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+              Active Workspace
             </span>
           </div>
+
+          <h1 className="font-display text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+            {selectedDistrict} District Dashboard
+          </h1>
           <p className="text-xs text-secondary font-normal">
-            National Heritage Surveillance &amp; Monitoring Portal • Republic of India
+            Isolated content workspace for {selectedDistrict} District, {selectedState} Circle • National Heritage Registry
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-secondary">
-          <span className="inline-flex items-center gap-1.5 text-xs text-secondary font-medium">
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            System Operational
-          </span>
+
+        <div className="flex items-center gap-2.5 text-xs text-secondary flex-wrap">
+          <button
+            id="dash-add-record-btn"
+            type="button"
+            onClick={onNavigateAddRecord}
+            className="px-3.5 py-2 rounded-lg bg-[#944600] hover:bg-[#7e3b00] active:scale-95 text-white font-semibold text-xs tracking-wide shadow-sm transition-all flex items-center gap-1.5"
+          >
+            <span className="text-sm font-bold leading-none">+</span>
+            <span>Add Record</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowCityImage((isOpen) => !isOpen)}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
               showCityImage
                 ? 'border-primary bg-primary text-white'
                 : 'border-surface-container bg-surface-container-lowest text-on-surface hover:bg-surface-container'
@@ -97,19 +302,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             aria-expanded={showCityImage}
           >
             <span className="material-symbols-outlined text-sm">image</span>
-            City Image
+            Cover Image
           </button>
         </div>
       </div>
 
       {showCityImage && (
-        <section className="ml-auto w-full max-w-md rounded-xl border border-surface-container bg-surface-container-lowest p-3 shadow-sm">
+        <section className="ml-auto w-full max-w-md rounded-xl border border-surface-container bg-surface-container-lowest p-3.5 shadow-sm animate-fade-in">
           <div className="flex gap-3">
-            <div className="h-16 w-24 shrink-0 overflow-hidden rounded-lg bg-surface-container">
+            <div className="h-16 w-24 shrink-0 overflow-hidden rounded-lg bg-surface-container border border-surface-container">
               {!imageError && draftCityImageUrl ? (
                 <img
                   src={draftCityImageUrl}
-                  alt="City banner preview"
+                  alt={`${selectedDistrict} cover banner preview`}
                   className="h-full w-full object-cover"
                   onError={() => setImageError(true)}
                 />
@@ -121,7 +326,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
             <div className="min-w-0 flex-1">
               <label htmlFor="city-image-url" className="block text-xs font-semibold text-on-surface">
-                City banner image
+                {selectedDistrict} District Cover Image
               </label>
               <div className="mt-1.5 flex gap-2">
                 <input
@@ -142,20 +347,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   type="button"
                   onClick={handleSaveCityImage}
                   disabled={!draftCityImageUrl.trim()}
-                  className="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Save
                 </button>
               </div>
               <p className={`mt-1 text-[0.65rem] ${imageError ? 'text-red-600' : 'text-secondary'}`}>
-                {imageError ? 'This image link could not be loaded.' : 'Use a public direct image link for the website and app banner.'}
+                {imageError ? 'This image link could not be loaded.' : 'Public banner image representing this district.'}
               </p>
             </div>
           </div>
         </section>
       )}
 
-      {/* Dynamic 5 High-Impact Metric KPI Cards */}
+      {/* Dynamic 5 High-Impact Metric KPI Cards: Total States, Total Districts, Scoped Records, Published, Draft/Review */}
       <section aria-label="Portal Metrics" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         {displayMetrics.map((metric, idx) => (
           <MetricCard
@@ -165,15 +370,127 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         ))}
       </section>
 
-      {/* Jurisdictional Publication Ledger */}
-      <div className="bg-surface-container-lowest rounded-xl p-5 border border-surface-container shadow-sm space-y-3.5">
+      {/* Heritage Content Table for the Selected State + District */}
+      <div className="bg-surface-container-lowest rounded-2xl border border-surface-container shadow-xs overflow-hidden">
+        <div className="p-4 border-b border-surface-container flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h3 className="font-display font-bold text-sm text-on-surface flex items-center gap-2">
+              <span>{selectedDistrict} Heritage Content Directory</span>
+              <span className="text-[0.62rem] font-bold px-2 py-0.5 rounded bg-surface-container text-secondary">
+                {places.length} Total Records
+              </span>
+            </h3>
+            <FilterTabs
+              tabs={filterTabs}
+              activeTab={activeTab}
+              onTabChange={(tab) => {
+                setActiveTab(tab);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+
+          {/* Search Input */}
+          <div className="relative min-w-[240px]">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-secondary text-sm">
+              search
+            </span>
+            <input
+              id="search-district-records-input"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder={`Search in ${selectedDistrict}...`}
+              className="w-full bg-surface-container/50 border border-surface-container rounded-xl pl-9 pr-4 py-1.5 text-xs text-on-surface placeholder:text-secondary focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Records Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-surface-container bg-surface-container/30 text-[0.68rem] font-bold text-secondary uppercase tracking-wider">
+                <th className="py-3 px-4">Record &amp; Identity</th>
+                <th className="py-3 px-4">Category</th>
+                <th className="py-3 px-4">Location</th>
+                <th className="py-3 px-4">Status</th>
+                <th className="py-3 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-container/40 text-xs">
+              {paginatedPlaces.length > 0 ? (
+                paginatedPlaces.map((place) => (
+                  <PlaceTableRow
+                    key={place.id}
+                    place={place}
+                    onEdit={onEditPlace || (() => {})}
+                    onView={onViewPlace || (() => {})}
+                    onDelete={onDeletePlace || (() => {})}
+                    onQuickPublish={onQuickPublishPlace || (() => {})}
+                  />
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className="py-16 text-center text-secondary">
+                    <div className="max-w-md mx-auto space-y-3">
+                      <div className="w-12 h-12 rounded-full bg-surface-container text-primary flex items-center justify-center mx-auto">
+                        <Layers className="w-6 h-6" />
+                      </div>
+                      <h4 className="font-semibold text-on-surface text-sm">
+                        No Records Found in {selectedDistrict}
+                      </h4>
+                      <p className="text-xs text-secondary leading-relaxed">
+                        {searchQuery
+                          ? `No records matching "${searchQuery}" in ${selectedDistrict}.`
+                          : `There are currently no cataloged heritage records in ${selectedDistrict}, ${selectedState}.`}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={onNavigateAddRecord}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-xs hover:bg-primary-hover transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add First Record in {selectedDistrict}</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination Controls */}
+        {filteredPlaces.length > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filteredPlaces.length}
+            rowsPerPage={rowsPerPage}
+            onPageChange={setCurrentPage}
+            onRowsPerPageChange={(rows) => {
+              setRowsPerPage(rows);
+              setCurrentPage(1);
+            }}
+          />
+        )}
+      </div>
+
+      {/* Jurisdictional Publication Ledger with Structured State & District Filters */}
+      <div className="bg-surface-container-lowest rounded-xl p-5 border border-surface-container shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-surface-container">
           <div>
-            <h3 className="font-display font-bold text-base text-on-surface">
-              Jurisdictional Publication Ledger
+            <h3 className="font-display font-bold text-base text-on-surface flex items-center gap-2">
+              <span>Jurisdictional Publication Ledger</span>
+              <span className="text-[0.62rem] font-bold px-2 py-0.5 rounded bg-primary/10 text-primary">
+                {uniqueStatesCount} States • {totalDistrictsCount} Districts
+              </span>
             </h3>
             <p className="text-xs text-secondary mt-0.5">
-              State and district level heritage documentation status across administrative circles
+              Comparative heritage documentation status across administrative districts. Filter by state to view its districts.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -181,7 +498,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               type="button"
               onClick={() => setShowFilterBar(!showFilterBar)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-colors ${
-                showFilterBar
+                showFilterBar || ledgerStateFilter !== 'ALL' || ledgerDistrictFilter !== 'ALL' || filterQuery
                   ? 'bg-primary text-white border-primary'
                   : 'bg-surface-container text-secondary hover:text-on-surface border-surface-container'
               }`}
@@ -189,35 +506,93 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <span className="material-symbols-outlined text-sm">filter_list</span>
               <span>Filter Ledger</span>
             </button>
-            <button
-              type="button"
-              onClick={() => onNavigate('popular-places')}
-              className="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-semibold border border-surface-container transition-colors"
-            >
-              View Full Directory
-            </button>
           </div>
         </div>
 
-        {/* Dynamic Filter Search Bar */}
-        {showFilterBar && (
-          <div className="p-2.5 bg-surface-container-low rounded-lg border border-surface-container flex items-center gap-2 animate-in fade-in duration-150">
-            <span className="material-symbols-outlined text-secondary text-sm">search</span>
-            <input
-              type="text"
-              value={filterQuery}
-              onChange={(e) => setFilterQuery(e.target.value)}
-              placeholder="Search by state, district, or category..."
-              className="w-full bg-transparent text-xs text-on-surface placeholder:text-secondary focus:outline-none"
-            />
-            {filterQuery && (
-              <button
-                type="button"
-                onClick={() => setFilterQuery('')}
-                className="text-secondary hover:text-on-surface text-xs"
-              >
-                Clear
-              </button>
+        {/* Dedicated Structured State and District Filter Controls */}
+        {(showFilterBar || ledgerStateFilter !== 'ALL' || ledgerDistrictFilter !== 'ALL' || filterQuery) && (
+          <div className="p-3 bg-surface-container-low rounded-xl border border-surface-container space-y-3 animate-fade-in">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* 1. State Filter Dropdown */}
+              <div>
+                <label className="block text-[0.68rem] font-bold text-secondary uppercase tracking-wider mb-1">
+                  Filter By State
+                </label>
+                <select
+                  value={ledgerStateFilter}
+                  onChange={(e) => {
+                    setLedgerStateFilter(e.target.value);
+                    setLedgerDistrictFilter('ALL');
+                  }}
+                  className="w-full bg-surface-container-lowest border border-surface-container rounded-lg px-2.5 py-1.5 text-xs text-on-surface font-medium focus:outline-none focus:border-primary"
+                >
+                  <option value="ALL">All States ({uniqueStatesList.length})</option>
+                  {uniqueStatesList.map((st) => (
+                    <option key={st} value={st}>
+                      {st}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 2. District Filter Dropdown */}
+              <div>
+                <label className="block text-[0.68rem] font-bold text-secondary uppercase tracking-wider mb-1">
+                  Filter By District {ledgerStateFilter !== 'ALL' && `in ${ledgerStateFilter}`}
+                </label>
+                <select
+                  value={ledgerDistrictFilter}
+                  onChange={(e) => setLedgerDistrictFilter(e.target.value)}
+                  className="w-full bg-surface-container-lowest border border-surface-container rounded-lg px-2.5 py-1.5 text-xs text-on-surface font-medium focus:outline-none focus:border-primary"
+                >
+                  <option value="ALL">All Districts ({ledgerDistrictsForState.length})</option>
+                  {ledgerDistrictsForState.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 3. Search Keyword Input */}
+              <div>
+                <label className="block text-[0.68rem] font-bold text-secondary uppercase tracking-wider mb-1">
+                  Search Query
+                </label>
+                <div className="relative">
+                  <span className="material-symbols-outlined text-secondary text-sm absolute left-2.5 top-1/2 -translate-y-1/2">
+                    search
+                  </span>
+                  <input
+                    type="text"
+                    value={filterQuery}
+                    onChange={(e) => setFilterQuery(e.target.value)}
+                    placeholder="Search jurisdiction name..."
+                    className="w-full bg-surface-container-lowest border border-surface-container rounded-lg pl-8 pr-3 py-1.5 text-xs text-on-surface placeholder:text-secondary focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Active filter summary & Clear Action */}
+            {(ledgerStateFilter !== 'ALL' || ledgerDistrictFilter !== 'ALL' || filterQuery) && (
+              <div className="flex items-center justify-between pt-1 border-t border-surface-container/60 text-xs">
+                <span className="text-secondary font-medium">
+                  Showing {filteredLedger.length} jurisdiction(s) matching criteria
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLedgerStateFilter('ALL');
+                    setLedgerDistrictFilter('ALL');
+                    setFilterQuery('');
+                  }}
+                  className="text-primary hover:underline font-semibold text-xs flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-xs">close</span>
+                  <span>Clear Filters</span>
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -239,7 +614,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 {filteredLedger.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="p-6 text-center text-secondary text-xs">
-                      No jurisdiction records matching filter query.
+                      No jurisdiction records matching current filter criteria.
                     </td>
                   </tr>
                 ) : (
@@ -253,7 +628,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         onClick={() => onSelectJurisdiction(row.state, row.district)}
                         className={`hover:bg-surface-container-low/50 transition-colors cursor-pointer ${
                           isCurrentSelection || row.isHighlighted
-                            ? 'bg-surface-container-low/40'
+                            ? 'bg-amber-500/10 font-semibold'
                             : ''
                         }`}
                         title={`Click to set operational scope to ${row.district}, ${row.state}`}
@@ -281,7 +656,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                               </span>
                               {isCurrentSelection && (
                                 <span className="text-[0.6rem] font-bold px-1.5 py-0.2 bg-amber-500/20 text-primary rounded">
-                                  Selected
+                                  Selected Scope
                                 </span>
                               )}
                             </div>

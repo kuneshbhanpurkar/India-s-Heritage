@@ -227,8 +227,14 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({ pdf, onClose }
         <div className="p-3 bg-surface-container flex items-center justify-between text-xs">
           <button
             type="button"
-            onClick={() => alert(`Downloading ${pdf.title}...`)}
-            className="px-3.5 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold flex items-center gap-1.5"
+            onClick={() => {
+              if (pdf.url) {
+                window.open(pdf.url, '_blank', 'noopener,noreferrer');
+              } else {
+                alert(`No valid URL found for ${pdf.title}`);
+              }
+            }}
+            className="px-3.5 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-primary-container transition-colors"
           >
             <span className="material-symbols-outlined text-sm">download</span>
             <span>Download PDF</span>
@@ -268,7 +274,7 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
         {/* Header with image banner */}
         <div className="relative h-48 sm:h-56 bg-stone-900 shrink-0">
           <img
-            src={place.imageUrl}
+            src={place.imageUrl || 'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&q=80&w=1200'}
             alt={place.name}
             className="w-full h-full object-cover opacity-90"
           />
@@ -301,13 +307,13 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
               <span className="text-secondary block text-[0.65rem] uppercase font-bold">
                 City / Jurisdiction
               </span>
-              <span className="font-semibold text-on-surface text-xs">{place.city}</span>
+              <span className="font-semibold text-on-surface text-xs">{place.city || 'National'}</span>
             </div>
             <div>
               <span className="text-secondary block text-[0.65rem] uppercase font-bold">
                 Sub-Precinct
               </span>
-              <span className="font-semibold text-on-surface text-xs">{place.subLocation}</span>
+              <span className="font-semibold text-on-surface text-xs">{place.subLocation || 'N/A'}</span>
             </div>
             <div>
               <span className="text-secondary block text-[0.65rem] uppercase font-bold">
@@ -317,16 +323,47 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
             </div>
           </div>
 
+          {place.subTitle && (
+            <div className="space-y-1">
+              <h4 className="font-bold text-xs text-on-surface uppercase tracking-wider">
+                Subtitle / Epithet
+              </h4>
+              <p className="text-on-surface font-medium italic">{place.subTitle}</p>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <h4 className="font-bold text-xs text-on-surface uppercase tracking-wider">
-              Archival Provenance &amp; Mandate
+              Historical &amp; Archival Description
             </h4>
-            <p className="text-secondary leading-relaxed">
-              Officially surveyed monument record cataloged under the AMASR Act provisions for
-              cultural preservation and visitor infrastructure surveillance. Maintained by the
-              Archaeological Survey of India circle jurisdiction.
+            <p className="text-secondary leading-relaxed whitespace-pre-line">
+              {place.description ||
+                'Officially cataloged heritage record under the national cultural preservation framework. Maintained by Archaeological Survey of India circle jurisdiction.'}
             </p>
           </div>
+
+          {(place.builtYear || place.dynasty || place.openingHours) && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-surface-container-low rounded-lg border border-surface-container text-[0.72rem]">
+              {place.builtYear && (
+                <div>
+                  <span className="text-secondary block font-bold uppercase text-[0.62rem]">Built Year</span>
+                  <span className="font-semibold text-on-surface">{place.builtYear}</span>
+                </div>
+              )}
+              {place.dynasty && (
+                <div>
+                  <span className="text-secondary block font-bold uppercase text-[0.62rem]">Dynasty / Era</span>
+                  <span className="font-semibold text-on-surface">{place.dynasty}</span>
+                </div>
+              )}
+              {place.openingHours && (
+                <div>
+                  <span className="text-secondary block font-bold uppercase text-[0.62rem]">Timings</span>
+                  <span className="font-semibold text-on-surface">{place.openingHours}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -361,8 +398,18 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
 interface InviteAdminModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddOfficer: (officer: { name: string; email: string; role: 'super_admin' | 'editor'; password: string }) => void;
+  onAddOfficer: (officer: {
+    name: string;
+    email: string;
+    role: 'super_admin' | 'state_admin' | 'district_admin' | 'editor' | 'reviewer';
+    password: string;
+    stateId?: string;
+    cityId?: string;
+  }) => void;
   selectedState: string;
+  selectedDistrict?: string;
+  selectedStateId?: string;
+  selectedDistrictId?: string;
 }
 
 export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
@@ -370,13 +417,16 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
   onClose,
   onAddOfficer,
   selectedState,
+  selectedDistrict,
+  selectedStateId,
+  selectedDistrictId,
 }) => {
   const [name, setName] = useState('');
   const [designation, setDesignation] = useState('Superintending Archaeologist');
-  const [role, setRole] = useState<'Circle Admin' | 'Super Admin'>('Circle Admin');
+  const [role, setRole] = useState<'super_admin' | 'state_admin' | 'district_admin' | 'editor' | 'reviewer'>('editor');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [circle, setCircle] = useState(`${selectedState} Circle`);
+  const [circle, setCircle] = useState(`${selectedState || 'National'} Circle`);
 
   if (!isOpen) return null;
 
@@ -387,10 +437,12 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
       return;
     }
     onAddOfficer({
-      name,
-      email,
-      role: role === 'Super Admin' ? 'super_admin' : 'editor',
+      name: name.trim(),
+      email: email.trim(),
+      role,
       password,
+      stateId: (role === 'state_admin' || role === 'district_admin' || role === 'editor') ? selectedStateId : undefined,
+      cityId: (role === 'district_admin' || role === 'editor') ? selectedDistrictId : undefined,
     });
 
     onClose();
@@ -409,7 +461,7 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
                 Invite / Register New Admin Officer
               </h3>
               <p className="text-[0.66rem] text-secondary">
-                Grant circle or super admin credentials with institutional email verification.
+                Grant circle, state, or super admin credentials with institutional email verification.
               </p>
             </div>
           </div>
@@ -462,10 +514,13 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value as any)}
-                className="w-full bg-[#fbf9f5] border border-outline-variant/60 rounded-lg p-2 text-on-surface focus:outline-none focus:border-primary"
+                className="w-full bg-[#fbf9f5] border border-outline-variant/60 rounded-lg p-2 text-on-surface focus:outline-none focus:border-primary font-medium"
               >
-                <option value="Circle Admin">Circle Admin</option>
-                <option value="Super Admin">Super Admin</option>
+                <option value="super_admin">Super Admin (National)</option>
+                <option value="state_admin">State Admin ({selectedState || 'Selected State'})</option>
+                <option value="district_admin">District Admin ({selectedDistrict || 'Selected District'})</option>
+                <option value="editor">Circle Editor</option>
+                <option value="reviewer">Archival Auditor</option>
               </select>
             </div>
           </div>
@@ -486,7 +541,7 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
 
           <div className="space-y-1">
             <label className="block text-[0.68rem] font-bold text-on-surface uppercase">
-              Assigned Jurisdiction Circle
+              Assigned Jurisdiction Circle / Jurisdiction
             </label>
             <input
               type="text"

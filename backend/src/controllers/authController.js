@@ -10,7 +10,7 @@ export async function loginAdmin(req, res) {
 		}
 
 		const cleanEmail = email.toLowerCase().trim();
-		const adminRoles = ['admin', 'super_admin', 'editor', 'reviewer'];
+		const adminRoles = ['admin', 'super_admin', 'editor', 'reviewer', 'state_admin', 'district_admin'];
 		const user = await User.findOne({
 			email: cleanEmail,
 			role: { $in: adminRoles },
@@ -31,7 +31,7 @@ export async function loginAdmin(req, res) {
 				_id: profile.id,
 				name: profile.name,
 				email: profile.email,
-				role: user.role || 'super_admin',
+				role: user.role || 'editor',
 			},
 			user: profile,
 		});

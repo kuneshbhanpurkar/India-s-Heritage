@@ -237,7 +237,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   >
                     category
                   </span>
-                  <span className="font-semibold text-[0.82rem]">City Heritage Sections</span>
+                  <span className="font-semibold text-[0.82rem]">Heritage Categories</span>
                 </div>
                 <span className="material-symbols-outlined text-amber-400 text-sm transition-transform duration-200">
                   {categoriesOpen ? 'expand_less' : 'expand_more'}
