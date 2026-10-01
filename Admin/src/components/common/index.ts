@@ -9,3 +9,4 @@ export * from './DaySelector';
 export * from './PlaceTableRow';
 export * from './OfficerTableRow';
 export * from './JurisdictionRow';
+export * from './DynamicCategoryFields';

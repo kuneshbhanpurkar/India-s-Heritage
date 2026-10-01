@@ -4,12 +4,19 @@ import { connectDatabase, disconnectDatabase } from '../config/db.js';
 import Content from '../models/Content.js';
 import State from '../models/State.js';
 import City from '../models/City.js';
+import DistrictCategory from '../models/DistrictCategory.js';
 import { slugify } from '../utils/auth.js';
+import {
+	resolveCategorySlug,
+	sanitizeCategoryFields,
+	CATEGORY_DEFINITIONS,
+	VALID_CATEGORY_SLUGS,
+} from '../config/categoryDefinitions.js';
 
 dns.setServers(['1.1.1.1', '8.8.8.8']);
 
 export async function runMigration() {
-	console.log('Starting migration script...');
+	console.log('Starting migration script for Our_Dharohar 5-category architecture...');
 
 	// 1. Normalize States
 	const states = await State.find();
@@ -47,7 +54,7 @@ export async function runMigration() {
 	}
 	console.log(`Checked ${cities.length} cities.`);
 
-	// 3. Migrate and backfill Content documents
+	// 3. Migrate and backfill Content documents to 5 Canonical Categories
 	const contents = await Content.find();
 	let migratedCount = 0;
 
@@ -70,7 +77,17 @@ export async function runMigration() {
 			}
 		}
 
-		// Backfill subtitle from fields
+		// Resolve category section slug to canonical 5 slugs
+		const canonicalSlug = resolveCategorySlug(item.section) || 'heritage-places';
+		if (item.section !== canonicalSlug) {
+			item.section = canonicalSlug;
+			modified = true;
+		}
+		if (CATEGORY_DEFINITIONS[canonicalSlug]) {
+			item.category = CATEGORY_DEFINITIONS[canonicalSlug].title;
+		}
+
+		// Backfill subtitle from fields if present
 		if (!item.subtitle && fields.subTitle) {
 			item.subtitle = String(fields.subTitle).trim();
 			modified = true;
@@ -92,24 +109,62 @@ export async function runMigration() {
 			modified = true;
 		}
 
+		// Sanitize fields against category whitelist
+		const sanitized = sanitizeCategoryFields(canonicalSlug, item.fields);
+		item.fields = sanitized;
+
 		// Location normalization
-		if (item.latitude !== undefined && item.longitude !== undefined) {
-			if (!item.location || !item.location.coordinates || item.location.coordinates[0] === 0) {
+		if (
+			item.latitude !== undefined &&
+			item.latitude !== null &&
+			item.longitude !== undefined &&
+			item.longitude !== null &&
+			!isNaN(Number(item.latitude)) &&
+			!isNaN(Number(item.longitude))
+		) {
+			const lat = Number(item.latitude);
+			const lng = Number(item.longitude);
+			if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
 				item.location = {
 					type: 'Point',
-					coordinates: [Number(item.longitude), Number(item.latitude)],
+					coordinates: [lng, lat],
 				};
-				modified = true;
+				item.latitude = lat;
+				item.longitude = lng;
 			}
 		}
 
-		if (modified) {
-			await item.save();
-			migratedCount++;
+		if (item.active === undefined) {
+			item.active = true;
+			modified = true;
 		}
+
+		await item.save();
+		migratedCount++;
 	}
 
 	console.log(`Content migration finished. Updated ${migratedCount} of ${contents.length} records.`);
+
+	// 4. Migrate DistrictCategory records to canonical slugs
+	const districtCats = await DistrictCategory.find();
+	for (const dc of districtCats) {
+		const canonicalSlug = resolveCategorySlug(dc.categorySlug);
+		if (canonicalSlug && canonicalSlug !== dc.categorySlug) {
+			// Check if canonical already exists for this district
+			const existingCanonical = await DistrictCategory.findOne({
+				districtId: dc.districtId,
+				categorySlug: canonicalSlug,
+			});
+			if (existingCanonical) {
+				await DistrictCategory.findByIdAndDelete(dc._id);
+			} else {
+				dc.categorySlug = canonicalSlug;
+				dc.categoryId = canonicalSlug;
+				await dc.save();
+			}
+		}
+	}
+	console.log(`DistrictCategory configuration migration finished.`);
 }
 
 async function runStandalone() {

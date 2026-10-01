@@ -60,6 +60,8 @@ export interface HeritageSiteCard {
   section: string;
   image: string;
   subTitle?: string;
+  shortDescription?: string;
+  fullDescription?: string;
   category?: string;
   rating?: number;
   reviewsCount?: string;
@@ -71,6 +73,19 @@ export interface HeritageSiteCard {
   isFeatured?: boolean;
   latitude?: number;
   longitude?: number;
+  mediaItems?: Array<{
+    id: string;
+    title: string;
+    category: string;
+    badge: string;
+    duration: string;
+    image: string;
+    videoUrl?: string;
+    description: string;
+    meta: string;
+  }>;
+  documents?: Array<{ title: string; type?: string; url: string; author?: string; publisher?: string }>;
+  sources?: Array<{ sourceTitle: string; sourceUrl?: string; publisher?: string }>;
 }
 
 export interface CityOverviewResponse {
@@ -164,28 +179,66 @@ export const getContent = (districtId?: string) =>
   request<HeritageSiteCard[]>(`/api/public/content${districtId ? `?cityId=${encodeURIComponent(districtId)}` : ''}`);
 
 const sectionCategoryMap: Record<string, HeritageSite['categoryType']> = {
+  'heritage-places': 'popular',
   'popular-places': 'popular',
   'hidden-places': 'hidden',
+  'culture-traditions': 'cultural',
   'cultural-folk': 'cultural',
   'regional-festivals': 'festivals',
+  'living-traditions': 'living',
   'living-culture': 'living',
+  'arts-folk': 'cultural',
+  'dance-traditions': 'cultural',
+  'arts-crafts': 'cultural',
+  'food-markets': 'living',
+  'culinary-heritage': 'living',
 };
 
 export const toHeritageSite = (card: HeritageSiteCard, district?: PublicCity): HeritageSite => {
-  const mediaItems: MediaItem[] = card.image
-    ? [
-        {
-          id: `${card.id}-m1`,
-          title: card.title || card.name || 'Heritage Monument',
-          category: 'Archival Photography',
-          badge: 'Verified Image',
-          duration: '',
-          image: card.image,
-          description: card.subTitle || '',
-          meta: 'Official ASI Archive Record',
-        },
-      ]
+  // Use real mediaItems from DB; fall back to cover image only if no media
+  const dbMediaItems = card.mediaItems && card.mediaItems.length > 0 ? card.mediaItems : null;
+  const fallbackMedia: MediaItem[] = card.image
+    ? [{
+        id: `${card.id}-m1`,
+        title: card.title || card.name || 'Heritage Monument',
+        category: 'Archival Photography',
+        badge: 'Verified Image',
+        duration: '',
+        image: card.image,
+        description: card.subTitle || '',
+        meta: 'Official ASI Archive Record',
+      }]
     : [];
+
+  const mediaItems: MediaItem[] = dbMediaItems
+    ? dbMediaItems.map((m) => ({
+        id: m.id,
+        title: m.title,
+        category: m.category as MediaItem['category'],
+        badge: m.badge,
+        duration: m.duration,
+        image: m.image,
+        videoUrl: m.videoUrl,
+        description: m.description,
+        meta: m.meta,
+      }))
+    : fallbackMedia;
+
+  // Derive dynamic visitor tariffs
+  let visitorTariffs = (card as any).visitorTariffs;
+  if (!visitorTariffs || visitorTariffs.length === 0) {
+    const fee = (card as any).fields?.entryFee;
+    if (fee && typeof fee === 'object') {
+      visitorTariffs = [];
+      if (fee.domestic) visitorTariffs.push({ category: 'Indian Citizens', price: `₹${fee.domestic}`, highlight: true });
+      if (fee.student) visitorTariffs.push({ category: 'Students', price: `₹${fee.student}` });
+      if (fee.foreign) visitorTariffs.push({ category: 'Foreign Visitors', price: `₹${fee.foreign}` });
+    } else if (typeof fee === 'string' && fee.trim()) {
+      visitorTariffs = [{ category: 'General Entry', price: fee.startsWith('₹') ? fee : `₹${fee}`, highlight: true }];
+    } else {
+      visitorTariffs = [{ category: 'General Entry', price: '₹25', highlight: true }];
+    }
+  }
 
   return {
     id: card.id,
@@ -193,8 +246,8 @@ export const toHeritageSite = (card: HeritageSiteCard, district?: PublicCity): H
     subTitle: card.subTitle || '',
     category: card.category || 'Heritage',
     categoryType: sectionCategoryMap[card.section] || 'popular',
-    dynasty: card.dynasty || 'Indian Heritage',
-    location: district?.name || 'Madhya Pradesh',
+    dynasty: card.dynasty || (card as any).fields?.builtBy || 'Indian Heritage',
+    location: district?.name || (card as any).districtName || (card as any).cityName || 'Madhya Pradesh',
     coordinates: {
       lat: card.latitude || district?.coordinates?.lat || 0,
       lng: card.longitude || district?.coordinates?.lng || 0,
@@ -206,15 +259,15 @@ export const toHeritageSite = (card: HeritageSiteCard, district?: PublicCity): H
     rating: Number(card.rating || 4.5),
     reviewsCount: card.reviewsCount || '1,200 reviews',
     image: card.image,
-    description: card.subTitle || '',
-    openingHours: card.openingHours || '09:00 AM - 05:00 PM',
+    description: card.fullDescription || card.shortDescription || card.subTitle || '',
+    openingHours: card.openingHours || (card as any).fields?.timings || '09:00 AM - 05:00 PM',
     statusBadge: 'Verified Monument',
     verifiedType: 'asi',
     directionTimeMinutes: 15,
-    hasAudio: true,
-    builtYear: card.builtYear || 'Historical',
+    hasAudio: mediaItems.some((m) => m.category === 'Sound & Light'),
+    builtYear: card.builtYear || (card as any).fields?.era || 'Historical',
     mediaItems,
-    visitorTariffs: [{ category: 'General Entry', price: '₹25' }],
+    visitorTariffs,
     transitOptions: [{ mode: 'Metro / Auto', detail: 'Convenient local transit available', etaMinutes: 10, fare: '₹20' }],
   };
 };

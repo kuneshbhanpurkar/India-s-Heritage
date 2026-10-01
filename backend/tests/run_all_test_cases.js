@@ -229,7 +229,7 @@ async function runAllTests() {
       body: JSON.stringify({
         title: 'Sanity Test Monument 1',
         districtId: testDistrict._id,
-        section: 'popular-places',
+        section: 'heritage-places',
       }),
     });
     assert.strictEqual(createdRes.status, 201);
@@ -259,12 +259,12 @@ async function runAllTests() {
       body: JSON.stringify({
         title: 'Sanity Test Folk Dance',
         districtId: testDistrict._id,
-        section: 'cultural-folk', // Alias for dance-traditions
+        section: 'cultural-folk', // Alias for arts-folk
       }),
     });
     assert.strictEqual(aliasRes.status, 201);
     const aliasDb = await Content.findById(aliasRes.data._id);
-    assert.strictEqual(aliasDb.section, 'dance-traditions', 'cultural-folk must normalize to dance-traditions');
+    assert.strictEqual(aliasDb.section, 'arts-folk', 'cultural-folk must normalize to arts-folk');
     await Content.findByIdAndDelete(aliasRes.data._id);
     recordResult('sanity', 'TC-SN-003', 'Section Alias Normalizes to Canonical Slug (Bug #6)', true);
   } catch (err) {
@@ -382,9 +382,9 @@ async function runAllTests() {
 
   try {
     // TC-UT-006: getSectionBySlug() Returns Section for Canonical Slug
-    const sec = getSectionBySlug('dance-traditions');
-    assert(sec, 'dance-traditions must be found');
-    assert.strictEqual(sec.slug, 'dance-traditions');
+    const sec = getSectionBySlug('arts-folk');
+    assert(sec, 'arts-folk must be found');
+    assert.strictEqual(sec.slug, 'arts-folk');
     recordResult('unit', 'TC-UT-006', 'getSectionBySlug() Returns Canonical Section Object', true);
   } catch (err) {
     recordResult('unit', 'TC-UT-006', 'getSectionBySlug() Returns Canonical Section Object', false, err);
@@ -393,9 +393,9 @@ async function runAllTests() {
   try {
     // TC-UT-007: getSectionBySlug() Resolves Alias to Canonical
     const alias1 = getSectionBySlug('cultural-folk');
-    assert.strictEqual(alias1.slug, 'dance-traditions');
+    assert.strictEqual(alias1.slug, 'arts-folk');
     const alias2 = getSectionBySlug('living-culture');
-    assert.strictEqual(alias2.slug, 'living-traditions');
+    assert.strictEqual(alias2.slug, 'culture-traditions');
     recordResult('unit', 'TC-UT-007', 'getSectionBySlug() Resolves Legacy Aliases to Canonical Slugs', true);
   } catch (err) {
     recordResult('unit', 'TC-UT-007', 'getSectionBySlug() Resolves Legacy Aliases to Canonical Slugs', false, err);
@@ -481,7 +481,7 @@ async function runAllTests() {
       title: 'Draft Default Test',
       cityId: new mongoose.Types.ObjectId(),
       districtId: new mongoose.Types.ObjectId(),
-      section: 'popular-places',
+      section: 'heritage-places',
       slug: 'draft-default-test',
     });
     assert.strictEqual(doc.status, 'draft');
@@ -587,7 +587,7 @@ async function runAllTests() {
       body: JSON.stringify({
         title: 'Auth Identity Verification Monument',
         districtId: testDistrict._id,
-        section: 'popular-places',
+        section: 'heritage-places',
       }),
     });
     assert.strictEqual(createRes.status, 201);
@@ -609,13 +609,13 @@ async function runAllTests() {
       body: JSON.stringify({
         title: 'Qutub Minar Complex',
         districtId: testDistrict._id,
-        section: 'popular-places',
+        section: 'heritage-places',
         status: 'draft',
         latitude: 28.5244,
         longitude: 77.1855,
         fields: {
-          description: 'A 73-meter high minaret built in 1192 by Qutb-ud-din Aibak.',
-          builtYear: '1192 CE',
+          era: '1192 CE',
+          builtBy: 'Qutb-ud-din Aibak',
         },
       }),
     });
@@ -642,7 +642,7 @@ async function runAllTests() {
     });
     assert.strictEqual(res.status, 201);
     const dbRecord = await Content.findById(res.data._id);
-    assert.strictEqual(dbRecord.section, 'dance-traditions');
+    assert.strictEqual(dbRecord.section, 'arts-folk');
     await Content.findByIdAndDelete(res.data._id);
     recordResult('integration', 'TC-INT-008', 'POST /api/admin/content Normalizes Section Aliases', true);
   } catch (err) {
@@ -663,13 +663,13 @@ async function runAllTests() {
   }
 
   try {
-    // TC-INT-010: GET /api/admin/content?section=dance-traditions Filters by Section
-    const res = await request('/api/admin/content?section=popular-places', {
+    // TC-INT-010: GET /api/admin/content?section=heritage-places Filters by Section
+    const res = await request('/api/admin/content?section=heritage-places', {
       headers: { Authorization: `Bearer ${superAdminToken}` },
     });
     assert.strictEqual(res.status, 200);
     assert(Array.isArray(res.data));
-    assert(res.data.every(item => item.section === 'popular-places'));
+    assert(res.data.every(item => item.section === 'heritage-places'));
     recordResult('integration', 'TC-INT-010', 'GET /api/admin/content Filters By Section', true);
   } catch (err) {
     recordResult('integration', 'TC-INT-010', 'GET /api/admin/content Filters By Section', false, err);
@@ -692,17 +692,17 @@ async function runAllTests() {
   }
 
   try {
-    // TC-INT-012: DELETE /api/admin/content/:id Removes Record
+    // TC-INT-012: DELETE /api/admin/content/:id Performs Soft Delete
     const delRes = await request(`/api/admin/content/${integrationContentId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${superAdminToken}` },
     });
     assert.strictEqual(delRes.status, 204);
     const checkDb = await Content.findById(integrationContentId);
-    assert.strictEqual(checkDb, null, 'Deleted content must no longer exist in DB');
-    recordResult('integration', 'TC-INT-012', 'DELETE /api/admin/content/:id Removes Record from DB', true);
+    assert(checkDb && checkDb.active === false, 'Deleted content must be marked active: false in DB');
+    recordResult('integration', 'TC-INT-012', 'DELETE /api/admin/content/:id Performs Soft Delete in DB', true);
   } catch (err) {
-    recordResult('integration', 'TC-INT-012', 'DELETE /api/admin/content/:id Removes Record from DB', false, err);
+    recordResult('integration', 'TC-INT-012', 'DELETE /api/admin/content/:id Performs Soft Delete in DB', false, err);
   }
 
   try {
@@ -713,7 +713,7 @@ async function runAllTests() {
       body: JSON.stringify({
         title: 'Invalid District Item',
         districtId: 'not-a-valid-object-id',
-        section: 'popular-places',
+        section: 'heritage-places',
       }),
     });
     assert.strictEqual(badRes.status, 400);
@@ -730,7 +730,7 @@ async function runAllTests() {
       body: JSON.stringify({
         title: 'Super Admin Universal Scope Item',
         districtId: testDistrict._id,
-        section: 'popular-places',
+        section: 'heritage-places',
       }),
     });
     assert.strictEqual(res.status, 201);
@@ -781,7 +781,7 @@ async function runAllTests() {
       body: JSON.stringify({
         title: 'Should Be Blocked',
         districtId: otherDistrict._id,
-        section: 'popular-places',
+        section: 'heritage-places',
       }),
     });
     assert.strictEqual(blockedRes.status, 403);
@@ -995,10 +995,10 @@ async function runAllTests() {
     assert.strictEqual(distCats.status, 200);
     assert(Array.isArray(distCats.data) && distCats.data.length >= 5, 'Must sync canonical sections');
     const slugs = distCats.data.map(c => c.slug);
-    assert(slugs.includes('popular-places'));
-    assert(slugs.includes('dance-traditions'));
-    assert(slugs.includes('culinary-heritage'));
-    assert(slugs.includes('living-traditions'));
+    assert(slugs.includes('heritage-places'));
+    assert(slugs.includes('arts-folk'));
+    assert(slugs.includes('food-markets'));
+    assert(slugs.includes('culture-traditions'));
     recordResult('system', 'TC-SYS-004', 'Canonical Sections Synced For Every District', true);
   } catch (err) {
     recordResult('system', 'TC-SYS-004', 'Canonical Sections Synced For Every District', false, err);
@@ -1006,14 +1006,14 @@ async function runAllTests() {
 
   try {
     // TC-SYS-005: District Category Toggle Updates Active State
-    const updateCat = await request(`/api/admin/district-categories/${testDistrict._id}/dance-traditions`, {
+    const updateCat = await request(`/api/admin/district-categories/${testDistrict._id}/arts-folk`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${superAdminToken}` },
       body: JSON.stringify({ enabled: false }),
     });
     assert.strictEqual(updateCat.status, 200);
     // Re-enable it
-    await request(`/api/admin/district-categories/${testDistrict._id}/dance-traditions`, {
+    await request(`/api/admin/district-categories/${testDistrict._id}/arts-folk`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${superAdminToken}` },
       body: JSON.stringify({ enabled: true }),
@@ -1048,8 +1048,8 @@ async function runAllTests() {
       body: JSON.stringify({
         title: 'UAT Lifecycle Monument',
         districtId: testDistrict._id,
-        section: 'popular-places',
-        fields: { description: 'Full lifecycle test item' },
+        section: 'heritage-places',
+        fields: { builtBy: 'Full lifecycle test author' },
       }),
     });
     assert.strictEqual(create.status, 201);
@@ -1075,7 +1075,7 @@ async function runAllTests() {
     assert.strictEqual(toPublish.data.status, 'published');
 
     // Check public visibility
-    const publicCheck = await request(`/api/public/cities/${testDistrict._id}/sections/popular-places`);
+    const publicCheck = await request(`/api/public/cities/${testDistrict._id}/sections/heritage-places`);
     assert(Array.isArray(publicCheck.data) && publicCheck.data.some(i => i.id === uatRecordId || i._id === uatRecordId), 'Must be visible publicly');
 
     // 4. Hide
@@ -1088,10 +1088,10 @@ async function runAllTests() {
     assert.strictEqual(toHide.data.status, 'hidden');
 
     // Check public invisibility
-    const publicCheckHidden = await request(`/api/public/cities/${testDistrict._id}/sections/popular-places`);
+    const publicCheckHidden = await request(`/api/public/cities/${testDistrict._id}/sections/heritage-places`);
     assert(Array.isArray(publicCheckHidden.data) && !publicCheckHidden.data.some(i => i.id === uatRecordId || i._id === uatRecordId), 'Hidden item must not be visible publicly');
 
-    // 5. Delete
+    // 5. Delete (Soft delete)
     const toDelete = await request(`/api/admin/content/${uatRecordId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${superAdminToken}` },
@@ -1110,7 +1110,7 @@ async function runAllTests() {
       body: JSON.stringify({
         title: 'Distinctive Unique Searchable Title XYZ999',
         districtId: testDistrict._id,
-        section: 'popular-places',
+        section: 'heritage-places',
       }),
     });
     assert.strictEqual(sCreate.status, 201);
@@ -1145,7 +1145,7 @@ async function runAllTests() {
       slug: 'district-1-only-item',
       districtId: testDistrict._id,
       cityId: testDistrict._id,
-      section: 'popular-places',
+      section: 'heritage-places',
       status: 'published',
     });
 
@@ -1154,15 +1154,15 @@ async function runAllTests() {
       slug: 'district-2-only-item',
       districtId: testDistrict2._id,
       cityId: testDistrict2._id,
-      section: 'popular-places',
+      section: 'heritage-places',
       status: 'published',
     });
 
-    const d1Items = await request(`/api/public/cities/${testDistrict._id}/sections/popular-places`);
+    const d1Items = await request(`/api/public/cities/${testDistrict._id}/sections/heritage-places`);
     assert(Array.isArray(d1Items.data) && d1Items.data.some(i => i.title === 'District 1 Only Item'));
     assert(!d1Items.data.some(i => i.title === 'District 2 Only Item'));
 
-    const d2Items = await request(`/api/public/cities/${testDistrict2._id}/sections/popular-places`);
+    const d2Items = await request(`/api/public/cities/${testDistrict2._id}/sections/heritage-places`);
     assert(Array.isArray(d2Items.data) && d2Items.data.some(i => i.title === 'District 2 Only Item'));
     assert(!d2Items.data.some(i => i.title === 'District 1 Only Item'));
 
@@ -1181,7 +1181,7 @@ async function runAllTests() {
       slug: 'geo-test-heritage-site',
       districtId: testDistrict._id,
       cityId: testDistrict._id,
-      section: 'popular-places',
+      section: 'heritage-places',
       status: 'published',
       location: {
         type: 'Point',

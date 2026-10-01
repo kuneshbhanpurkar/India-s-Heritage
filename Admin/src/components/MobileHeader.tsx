@@ -36,13 +36,13 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-md overflow-hidden bg-primary/20 border border-amber-500/30 flex items-center justify-center">
             <img
-              alt="Dharohar"
+              alt="Our_Dharohar"
               className="w-full h-full object-cover"
               src="https://lh3.googleusercontent.com/aida/AEtjO1U2jpMyI0tcImM6pB9u__givfD26xwyD_V7TXjsMcs6McMh6e5XdslL9nqtnuaOO4gaX6uKcRfT8IEJW6uUlFEx5EMHdtGOBrgPjlXqQcNYw-CK6I_D7Ugx7fpAbId_2HzUcF1KDIB_633aHuU1UzACdd20sI0-4lIE3Oc79BXy2_X3aShTSEgSC4OHgPGBddXBK3EdaIpeAhGfkK2tKV3p0LrlC77lAI2QblY663Jqzapd_yVOPUCisig"
             />
           </div>
           <div>
-            <div className="font-display font-bold text-sm tracking-tight leading-none">Dharohar</div>
+            <div className="font-display font-bold text-sm tracking-tight leading-none">Our_Dharohar</div>
             <div className="text-[0.62rem] text-sidebar-muted uppercase tracking-wider">
               {selectedDistrict}, {selectedState}
             </div>
@@ -51,13 +51,13 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
-        {currentView === 'popular-places' && (
+        {(currentView === 'section' || currentView === 'dashboard') && (
           <button
             id="mobile-add-place-quick-btn"
             type="button"
             onClick={onNavigateAddRecord}
-            className="p-1.5 rounded-lg bg-primary hover:bg-primary-container text-white text-xs font-semibold flex items-center gap-1 shadow-sm"
-            title="Add New Place"
+            className="p-1.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-xs font-semibold flex items-center gap-1 shadow-sm"
+            title="Add Record"
           >
             <span className="material-symbols-outlined text-base">add</span>
             <span className="hidden sm:inline text-[0.7rem]">Add Record</span>

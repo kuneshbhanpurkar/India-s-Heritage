@@ -83,10 +83,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="font-display text-xl font-bold text-white tracking-tight leading-tight truncate">
-                  Dharohar
+                  Our_Dharohar
                 </span>
                 <span className="text-[0.68rem] text-sidebar-muted uppercase tracking-wider truncate mt-0.5 font-medium">
-                  National Heritage Portal
+                  Heritage Administration Portal
                 </span>
               </div>
             </div>
@@ -222,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={() => setCategoriesOpen(!categoriesOpen)}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all ${
-                  currentView === 'section' || currentView === 'popular-places' || currentView === 'add-record'
+                  currentView === 'section' || currentView === 'add-record'
                     ? 'bg-gradient-to-r from-amber-700/25 to-transparent text-white font-medium border-l-[3px] border-primary shadow-sm'
                     : 'text-sidebar-text hover:text-white hover:bg-sidebar-card/80'
                 }`}
@@ -230,7 +230,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="flex items-center gap-3">
                   <span
                     className={`material-symbols-outlined text-lg ${
-                      currentView === 'section' || currentView === 'popular-places' || currentView === 'add-record'
+                      currentView === 'section' || currentView === 'add-record'
                         ? 'text-amber-400 material-symbols-fill'
                         : 'text-sidebar-muted'
                     }`}
@@ -251,7 +251,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   {sections.map((section) => {
                     const isSelected =
-                      (currentView === 'section' || currentView === 'popular-places' || currentView === 'add-record') &&
+                      (currentView === 'section' || currentView === 'add-record') &&
                       selectedCategory === section.slug;
 
                     return (

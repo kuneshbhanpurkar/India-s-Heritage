@@ -2,7 +2,8 @@ import React from 'react';
 
 export interface ToggleSwitchProps {
   id?: string;
-  checked: boolean;
+  checked?: boolean;
+  enabled?: boolean;
   onChange: (checked: boolean) => void;
   label?: string;
   statusLabels?: {
@@ -19,6 +20,7 @@ export interface ToggleSwitchProps {
 export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
   id,
   checked,
+  enabled,
   onChange,
   label,
   statusLabels = { active: 'Active', inactive: 'Disabled' },
@@ -28,6 +30,8 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
   className = '',
   size = 'md',
 }) => {
+  const isChecked = checked ?? enabled ?? false;
+
   const getActiveBgColor = () => {
     switch (color) {
       case 'amber':
@@ -56,17 +60,17 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
     <button
       id={id}
       type="button"
-      onClick={() => onChange(!checked)}
+      onClick={() => onChange(!isChecked)}
       className={`toggle-btn relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-        checked ? getActiveBgColor() : 'bg-stone-300'
+        isChecked ? getActiveBgColor() : 'bg-stone-300'
       }`}
       role="switch"
-      aria-checked={checked}
+      aria-checked={isChecked}
       title={title || label || 'Toggle state'}
     >
       <span
         className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-          checked ? 'translate-x-4' : 'translate-x-0'
+          isChecked ? 'translate-x-4' : 'translate-x-0'
         }`}
       />
     </button>
@@ -88,10 +92,10 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
         )}
         <span
           className={`text-[0.72rem] font-semibold leading-tight mt-0.5 ${
-            checked ? getActiveTextColor() : 'text-stone-500'
+            isChecked ? getActiveTextColor() : 'text-stone-500'
           }`}
         >
-          {checked ? statusLabels.active : statusLabels.inactive}
+          {isChecked ? statusLabels.active : statusLabels.inactive}
         </span>
       </div>
       {switchButton}

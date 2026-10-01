@@ -1,9 +1,10 @@
 import mongoose from 'mongoose';
+import { VALID_CATEGORY_SLUGS, CATEGORY_DEFINITIONS } from '../config/categoryDefinitions.js';
 
 const geoPointSchema = new mongoose.Schema(
 	{
-		type: { type: String, enum: ['Point'], default: 'Point', required: true },
-		coordinates: { type: [Number], required: true, default: [0, 0] }, // [longitude, latitude]
+		type: { type: String, enum: ['Point'], default: 'Point' },
+		coordinates: { type: [Number] }, // [longitude, latitude]
 	},
 	{ _id: false },
 );
@@ -58,17 +59,6 @@ const contentSchema = new mongoose.Schema(
 		stateId: { type: mongoose.Schema.Types.ObjectId, ref: 'State', index: true },
 		section: {
 			type: String,
-			enum: [
-				'popular-places',
-				'hidden-places',
-				'dance-traditions',
-				'cultural-folk',
-				'culinary-heritage',
-				'arts-crafts',
-				'living-traditions',
-				'living-culture',
-				'regional-festivals',
-			],
 			required: true,
 			index: true,
 		},
@@ -82,7 +72,7 @@ const contentSchema = new mongoose.Schema(
 		status: {
 			type: String,
 			enum: ['draft', 'review', 'published', 'hidden', 'archived'],
-			default: 'draft',
+			default: 'published',
 			index: true,
 		},
 		isFeatured: { type: Boolean, default: false },
@@ -97,7 +87,7 @@ const contentSchema = new mongoose.Schema(
 		media: [mediaItemSchema],
 		documents: [documentItemSchema],
 		sources: [sourceItemSchema],
-		location: { type: geoPointSchema, default: () => ({ type: 'Point', coordinates: [0, 0] }) },
+		location: { type: geoPointSchema },
 		latitude: { type: Number },
 		longitude: { type: Number },
 		active: { type: Boolean, default: true },
@@ -118,11 +108,29 @@ contentSchema.pre('save', function (next) {
 	if (this.districtId && !this.cityId) {
 		this.cityId = this.districtId;
 	}
-	if (this.latitude !== undefined && this.longitude !== undefined) {
-		this.location = {
-			type: 'Point',
-			coordinates: [Number(this.longitude), Number(this.latitude)],
-		};
+
+	if (this.section && CATEGORY_DEFINITIONS[this.section]) {
+		this.category = CATEGORY_DEFINITIONS[this.section].title;
+	}
+
+	if (
+		this.latitude !== undefined &&
+		this.latitude !== null &&
+		this.longitude !== undefined &&
+		this.longitude !== null &&
+		!isNaN(Number(this.latitude)) &&
+		!isNaN(Number(this.longitude))
+	) {
+		const lat = Number(this.latitude);
+		const lng = Number(this.longitude);
+		if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+			this.latitude = lat;
+			this.longitude = lng;
+			this.location = {
+				type: 'Point',
+				coordinates: [lng, lat],
+			};
+		}
 	} else if (this.location?.coordinates?.length === 2) {
 		this.longitude = this.location.coordinates[0];
 		this.latitude = this.location.coordinates[1];

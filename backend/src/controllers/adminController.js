@@ -5,8 +5,16 @@ import State from '../models/State.js';
 import User from '../models/User.js';
 import DistrictCategory from '../models/DistrictCategory.js';
 import AuditLog from '../models/AuditLog.js';
-import { CITY_SECTIONS, VALID_SECTION_SLUGS, getSectionBySlug } from '../config/sections.js';
-import { isValidId, slugify, userProfile } from '../utils/auth.js';
+import {
+	CATEGORY_DEFINITIONS,
+	CITY_SECTIONS,
+	VALID_CATEGORY_SLUGS,
+	VALID_SECTION_SLUGS,
+	resolveCategorySlug,
+	getSectionBySlug,
+	sanitizeCategoryFields,
+} from '../config/categoryDefinitions.js';
+import { isValidId, slugify } from '../utils/auth.js';
 
 // Helper for audit logging
 async function logAudit(req, action, entity, entityId, summary, details = {}) {
@@ -28,13 +36,13 @@ async function logAudit(req, action, entity, entityId, summary, details = {}) {
 	}
 }
 
-// 1. List Content (Admin Filterable)
+// 1. List Content (Admin Filterable & Scoped)
 export async function listContent(req, res) {
 	try {
 		const { stateId, cityId, districtId, section, status, search, page = 1, limit = 50 } = req.query;
 		const query = { active: { $ne: false } };
 
-		const targetCityId = cityId || districtId;
+		const targetCityId = districtId || cityId;
 		if (targetCityId && isValidId(targetCityId)) {
 			query.cityId = targetCityId;
 		}
@@ -43,8 +51,12 @@ export async function listContent(req, res) {
 			query.stateId = stateId;
 		}
 
-		if (section && VALID_SECTION_SLUGS.includes(section)) {
-			query.section = section;
+		if (section) {
+			const canonicalSection = resolveCategorySlug(section);
+			if (canonicalSection) {
+				const definition = CATEGORY_DEFINITIONS[canonicalSection];
+				query.section = { $in: [canonicalSection, ...(definition?.aliases || [])] };
+			}
 		}
 
 		if (status && ['draft', 'review', 'published', 'hidden', 'archived'].includes(status)) {
@@ -68,34 +80,40 @@ export async function listContent(req, res) {
 		]);
 
 		return res.json(
-			items.map((item) => ({
-				_id: item._id.toString(),
-				id: item._id.toString(),
-				title: item.title,
-				subtitle: item.subtitle || item.fields?.subTitle || '',
-				slug: item.slug,
-				section: item.section,
-				status: item.status,
-				featured: item.isFeatured,
-				isFeatured: item.isFeatured,
-				shortDescription: item.shortDescription || item.fields?.description || '',
-				fullDescription: item.fullDescription || item.fields?.fullDescription || '',
-				cityId: item.cityId?._id?.toString() || item.cityId?.toString() || '',
-				districtId: item.cityId?._id?.toString() || item.cityId?.toString() || '',
-				cityName: item.cityId?.name || '',
-				stateId: item.stateId?._id?.toString() || '',
-				stateName: item.stateId?.name || '',
-				fields: item.fields || {},
-				media: item.media || [],
-				documents: item.documents || [],
-				sources: item.sources || [],
-				location: item.location,
-				latitude: item.latitude !== undefined ? item.latitude : item.location?.coordinates?.[1] || 0,
-				longitude: item.longitude !== undefined ? item.longitude : item.location?.coordinates?.[0] || 0,
-				publishedAt: item.publishedAt,
-				createdAt: item.createdAt,
-				updatedAt: item.updatedAt,
-			})),
+			items.map((item) => {
+				const canonicalSection = resolveCategorySlug(item.section) || item.section;
+				return {
+					_id: item._id.toString(),
+					id: item._id.toString(),
+					title: item.title,
+					subtitle: item.subtitle || item.fields?.subTitle || '',
+					slug: item.slug,
+					section: canonicalSection,
+					category: item.category || CATEGORY_DEFINITIONS[canonicalSection]?.title || 'Heritage',
+					status: item.status,
+					featured: Boolean(item.isFeatured),
+					isFeatured: Boolean(item.isFeatured),
+					mediaEnabled: item.mediaEnabled !== false,
+					documentsEnabled: item.documentsEnabled !== false,
+					shortDescription: item.shortDescription || item.fields?.description || '',
+					fullDescription: item.fullDescription || item.fields?.fullDescription || '',
+					cityId: item.cityId?._id?.toString() || item.cityId?.toString() || '',
+					districtId: item.cityId?._id?.toString() || item.cityId?.toString() || '',
+					cityName: item.cityId?.name || '',
+					stateId: item.stateId?._id?.toString() || '',
+					stateName: item.stateId?.name || '',
+					fields: item.fields || {},
+					media: item.media || [],
+					documents: item.documents || [],
+					sources: item.sources || [],
+					location: item.location,
+					latitude: item.latitude,
+					longitude: item.longitude,
+					publishedAt: item.publishedAt,
+					createdAt: item.createdAt,
+					updatedAt: item.updatedAt,
+				};
+			}),
 		);
 	} catch (error) {
 		console.error('Admin list content error:', error);
@@ -110,12 +128,16 @@ export async function getContent(req, res) {
 		if (!isValidId(id)) return res.status(400).json({ error: 'Invalid content ID' });
 
 		const item = await Content.findById(id).populate('cityId', 'name').populate('stateId', 'name code').lean();
-		if (!item) return res.status(404).json({ error: 'Content record not found' });
+		if (!item || item.active === false) return res.status(404).json({ error: 'Content record not found' });
+
+		const canonicalSection = resolveCategorySlug(item.section) || item.section;
 
 		return res.json({
 			...item,
 			_id: item._id.toString(),
 			id: item._id.toString(),
+			section: canonicalSection,
+			category: item.category || CATEGORY_DEFINITIONS[canonicalSection]?.title || 'Heritage',
 			subtitle: item.subtitle || item.fields?.subTitle || '',
 			shortDescription: item.shortDescription || item.fields?.description || '',
 			fullDescription: item.fullDescription || item.fields?.fullDescription || '',
@@ -141,7 +163,7 @@ export async function createContent(req, res) {
 			subtitle,
 			shortDescription,
 			fullDescription,
-			status = 'draft',
+			status = 'published',
 			isFeatured = false,
 			mediaEnabled = true,
 			documentsEnabled = true,
@@ -153,9 +175,9 @@ export async function createContent(req, res) {
 			longitude,
 		} = req.body || {};
 
-		const targetCityId = cityId || districtId;
+		const targetCityId = districtId || cityId;
 		if (!targetCityId || !isValidId(targetCityId)) {
-			return res.status(400).json({ error: 'A valid districtId / cityId is required' });
+			return res.status(400).json({ error: 'A valid districtId is required' });
 		}
 
 		const city = await City.findById(targetCityId);
@@ -163,60 +185,79 @@ export async function createContent(req, res) {
 
 		const resolvedStateId = stateId && isValidId(stateId) ? stateId : city.stateId;
 
-		const rawSection = section || 'popular-places';
-		const resolvedSection = getSectionBySlug(rawSection);
-		if (!resolvedSection) {
-			return res.status(400).json({
-				error: `Invalid section: ${rawSection}. Valid options are: ${VALID_SECTION_SLUGS.join(', ')}`,
-			});
-		}
-		const targetSection = resolvedSection.slug;
+		const canonicalSection = resolveCategorySlug(section) || 'heritage-places';
 
 		if (!title || title.trim().length < 2) {
 			return res.status(400).json({ error: 'Title is required (minimum 2 characters)' });
 		}
 
+		// Validate coordinates if provided
+		let latNum = undefined;
+		let lngNum = undefined;
+		let locationObj = undefined;
+
+		if (latitude !== undefined && latitude !== null && latitude !== '' && longitude !== undefined && longitude !== null && longitude !== '') {
+			const parsedLat = Number(latitude);
+			const parsedLng = Number(longitude);
+			if (isNaN(parsedLat) || parsedLat < -90 || parsedLat > 90) {
+				return res.status(400).json({ error: 'Latitude must be a valid number between -90 and 90' });
+			}
+			if (isNaN(parsedLng) || parsedLng < -180 || parsedLng > 180) {
+				return res.status(400).json({ error: 'Longitude must be a valid number between -180 and 180' });
+			}
+			latNum = parsedLat;
+			lngNum = parsedLng;
+			locationObj = {
+				type: 'Point',
+				coordinates: [lngNum, latNum],
+			};
+		}
+
+		// Whitelist and sanitize fields for the category
+		const sanitizedFields = sanitizeCategoryFields(canonicalSection, fields);
+
 		const baseSlug = slugify(title);
 		const uniqueSlug = `${baseSlug}-${Date.now().toString().slice(-6)}`;
 
-		const latNum = latitude !== undefined && !isNaN(Number(latitude)) ? Number(latitude) : city.coordinates?.lat || 0;
-		const lngNum = longitude !== undefined && !isNaN(Number(longitude)) ? Number(longitude) : city.coordinates?.lng || 0;
-
-		const contentStatus = ['draft', 'review', 'published', 'hidden', 'archived'].includes(status) ? status : 'draft';
+		const contentStatus = ['draft', 'review', 'published', 'hidden', 'archived'].includes(status) ? status : 'published';
 		const actorId = req.admin?._id || req.admin?.id;
 
 		const content = await Content.create({
 			cityId: city._id,
 			districtId: city._id,
 			stateId: resolvedStateId,
-			section: targetSection,
-			category: targetSection,
+			section: canonicalSection,
+			category: CATEGORY_DEFINITIONS[canonicalSection].title,
 			title: title.trim(),
-			subtitle: subtitle ? subtitle.trim() : fields.subTitle || '',
+			subtitle: subtitle ? subtitle.trim() : sanitizedFields.subTitle || '',
 			slug: uniqueSlug,
-			shortDescription: shortDescription ? shortDescription.trim() : fields.description || '',
-			fullDescription: fullDescription ? fullDescription.trim() : fields.fullDescription || '',
+			shortDescription: shortDescription ? shortDescription.trim() : sanitizedFields.description || '',
+			fullDescription: fullDescription ? fullDescription.trim() : sanitizedFields.fullDescription || '',
 			status: contentStatus,
 			isFeatured: Boolean(isFeatured),
 			mediaEnabled: Boolean(mediaEnabled),
 			documentsEnabled: Boolean(documentsEnabled),
-			fields,
+			fields: sanitizedFields,
 			media: Array.isArray(media) ? media : [],
 			documents: Array.isArray(documents) ? documents : [],
 			sources: Array.isArray(sources) ? sources : [],
 			latitude: latNum,
 			longitude: lngNum,
-			location: {
-				type: 'Point',
-				coordinates: [lngNum, latNum],
-			},
+			location: locationObj,
 			publishedAt: contentStatus === 'published' ? new Date() : undefined,
 			publishedBy: contentStatus === 'published' ? actorId : undefined,
 			createdBy: actorId,
 			active: true,
 		});
 
-		logAudit(req, 'CREATE', 'Content', content._id, `Created content "${content.title}" in section "${targetSection}"`, { title, section: targetSection });
+		logAudit(
+			req,
+			'CREATE',
+			'Content',
+			content._id,
+			`Created content "${content.title}" in category "${canonicalSection}"`,
+			{ title, section: canonicalSection },
+		);
 
 		return res.status(201).json(content);
 	} catch (error) {
@@ -225,17 +266,19 @@ export async function createContent(req, res) {
 	}
 }
 
-// 4. Update Content
+// 4. Update Content (Updates in place, preserving ID and category scope)
 export async function updateContent(req, res) {
 	try {
 		const { id } = req.params;
 		if (!isValidId(id)) return res.status(400).json({ error: 'Invalid content ID' });
 
+		const existing = await Content.findById(id);
+		if (!existing || existing.active === false) return res.status(404).json({ error: 'Content record not found' });
+
 		const {
 			cityId,
 			districtId,
 			stateId,
-			section,
 			title,
 			subtitle,
 			shortDescription,
@@ -252,14 +295,11 @@ export async function updateContent(req, res) {
 			longitude,
 		} = req.body || {};
 
-		const existing = await Content.findById(id);
-		if (!existing) return res.status(404).json({ error: 'Content record not found' });
-
 		const update = {};
 		const actorId = req.admin?._id || req.admin?.id;
 		update.updatedBy = actorId;
 
-		const targetCityId = cityId || districtId;
+		const targetCityId = districtId || cityId;
 		if (targetCityId && isValidId(targetCityId)) {
 			const city = await City.findById(targetCityId);
 			if (city) {
@@ -269,12 +309,11 @@ export async function updateContent(req, res) {
 			}
 		}
 
-		if (section) {
-			const resolvedSection = getSectionBySlug(section);
-			if (resolvedSection) {
-				update.section = resolvedSection.slug;
-				update.category = resolvedSection.slug;
-			}
+		// Keep canonical category
+		const currentCategorySlug = resolveCategorySlug(existing.section) || existing.section;
+		update.section = currentCategorySlug;
+		if (CATEGORY_DEFINITIONS[currentCategorySlug]) {
+			update.category = CATEGORY_DEFINITIONS[currentCategorySlug].title;
 		}
 
 		if (title && title.trim().length >= 2) {
@@ -313,8 +352,10 @@ export async function updateContent(req, res) {
 			update.documentsEnabled = Boolean(documentsEnabled);
 		}
 
+		// Sanitize updated fields against the record's category definition
 		if (fields && typeof fields === 'object') {
-			update.fields = { ...existing.fields, ...fields };
+			const sanitizedFields = sanitizeCategoryFields(currentCategorySlug, fields);
+			update.fields = { ...sanitizedFields };
 		}
 
 		if (Array.isArray(media)) {
@@ -329,14 +370,18 @@ export async function updateContent(req, res) {
 			update.sources = sources;
 		}
 
-		if (latitude !== undefined && longitude !== undefined) {
+		if (latitude !== undefined && longitude !== undefined && latitude !== null && longitude !== null && latitude !== '' && longitude !== '') {
 			const lat = Number(latitude);
 			const lng = Number(longitude);
-			if (!isNaN(lat) && !isNaN(lng)) {
-				update.latitude = lat;
-				update.longitude = lng;
-				update.location = { type: 'Point', coordinates: [lng, lat] };
+			if (isNaN(lat) || lat < -90 || lat > 90) {
+				return res.status(400).json({ error: 'Latitude must be a valid number between -90 and 90' });
 			}
+			if (isNaN(lng) || lng < -180 || lng > 180) {
+				return res.status(400).json({ error: 'Longitude must be a valid number between -180 and 180' });
+			}
+			update.latitude = lat;
+			update.longitude = lng;
+			update.location = { type: 'Point', coordinates: [lng, lat] };
 		}
 
 		const updated = await Content.findByIdAndUpdate(id, { $set: update }, { new: true, runValidators: true });
@@ -367,7 +412,11 @@ export async function patchContentStatus(req, res) {
 			update.publishedBy = req.admin?._id || req.admin?.id;
 		}
 
-		const updated = await Content.findByIdAndUpdate(id, { $set: update }, { new: true });
+		const updated = await Content.findOneAndUpdate(
+			{ _id: id, active: { $ne: false } },
+			{ $set: update },
+			{ new: true },
+		);
 		if (!updated) return res.status(404).json({ error: 'Content record not found' });
 
 		logAudit(req, 'STATUS_CHANGE', 'Content', id, `Changed status of "${updated.title}" to ${status}`);
@@ -379,16 +428,20 @@ export async function patchContentStatus(req, res) {
 	}
 }
 
-// 6. Delete Content
+// 6. Soft Delete Content
 export async function deleteContent(req, res) {
 	try {
 		const { id } = req.params;
 		if (!isValidId(id)) return res.status(400).json({ error: 'Invalid content ID' });
 
-		const deleted = await Content.findByIdAndDelete(id);
+		const deleted = await Content.findOneAndUpdate(
+			{ _id: id, active: { $ne: false } },
+			{ $set: { active: false, updatedBy: req.admin?._id || req.admin?.id } },
+			{ new: true },
+		);
 		if (!deleted) return res.status(404).json({ error: 'Content record not found' });
 
-		logAudit(req, 'DELETE', 'Content', id, `Deleted content "${deleted.title}"`);
+		logAudit(req, 'DELETE', 'Content', id, `Soft-deleted content "${deleted.title}"`);
 
 		return res.status(204).end();
 	} catch (error) {
@@ -475,7 +528,6 @@ export async function deleteState(req, res) {
 		const { id } = req.params;
 		if (!isValidId(id)) return res.status(400).json({ error: 'Invalid state ID' });
 
-		// Check if state contains districts
 		const districtCount = await City.countDocuments({ stateId: id, active: { $ne: false } });
 		if (districtCount > 0) {
 			return res.status(409).json({
@@ -483,7 +535,7 @@ export async function deleteState(req, res) {
 			});
 		}
 
-		const deleted = await State.findByIdAndDelete(id);
+		const deleted = await State.findByIdAndUpdate(id, { $set: { active: false } });
 		if (!deleted) return res.status(404).json({ error: 'State not found' });
 
 		logAudit(req, 'DELETE', 'State', id, `Deleted state "${deleted.name}"`);
@@ -591,7 +643,6 @@ export async function deleteCity(req, res) {
 		const { id } = req.params;
 		if (!isValidId(id)) return res.status(400).json({ error: 'Invalid district ID' });
 
-		// Check if content records exist in district
 		const recordCount = await Content.countDocuments({ cityId: id, active: { $ne: false } });
 		if (recordCount > 0) {
 			return res.status(409).json({
@@ -599,7 +650,7 @@ export async function deleteCity(req, res) {
 			});
 		}
 
-		const deleted = await City.findByIdAndDelete(id);
+		const deleted = await City.findByIdAndUpdate(id, { $set: { active: false } });
 		if (!deleted) return res.status(404).json({ error: 'District not found' });
 
 		logAudit(req, 'DELETE', 'City', id, `Deleted district "${deleted.name}"`);
@@ -614,7 +665,9 @@ export async function deleteCity(req, res) {
 // 9. Admin Officers Management
 export async function listAdmins(req, res) {
 	try {
-		const admins = await User.find({ role: { $in: ['admin', 'super_admin', 'editor', 'reviewer', 'state_admin', 'district_admin'] } })
+		const admins = await User.find({
+			role: { $in: ['admin', 'super_admin', 'editor', 'reviewer', 'state_admin', 'district_admin'] },
+		})
 			.select('-password')
 			.sort({ name: 1 })
 			.lean();
@@ -673,7 +726,13 @@ export async function createAdmin(req, res) {
 			active: true,
 		});
 
-		logAudit(req, 'CREATE', 'User', admin._id, `Created admin officer ${admin.name} (${admin.email}) with role ${adminRole}`);
+		logAudit(
+			req,
+			'CREATE',
+			'User',
+			admin._id,
+			`Created admin officer ${admin.name} (${admin.email}) with role ${adminRole}`,
+		);
 
 		return res.status(201).json({
 			id: admin._id.toString(),
@@ -747,7 +806,10 @@ export async function getSummary(req, res) {
 
 		const [content, admins, users, states, cities, customCategoryConfigs] = await Promise.all([
 			Content.find(query, 'status section cityId stateId isFeatured').lean(),
-			User.find({ role: { $in: ['admin', 'super_admin', 'editor', 'reviewer', 'state_admin', 'district_admin'] } }, 'role active').lean(),
+			User.find(
+				{ role: { $in: ['admin', 'super_admin', 'editor', 'reviewer', 'state_admin', 'district_admin'] } },
+				'role active',
+			).lean(),
 			User.countDocuments({ role: 'user', active: true }),
 			State.find({ active: { $ne: false } }, 'name code').lean(),
 			City.find({ active: { $ne: false } }, 'name stateId').populate('stateId', 'name code').lean(),
@@ -792,7 +854,9 @@ export async function getSummary(req, res) {
 		const allContent = targetDistrictId ? await Content.find({ active: { $ne: false } }, 'cityId status').lean() : content;
 
 		const ledger = cities.map((c) => {
-			const cityContent = allContent.filter((item) => (item.cityId?._id || item.cityId)?.toString() === c._id.toString());
+			const cityContent = allContent.filter(
+				(item) => (item.cityId?._id || item.cityId)?.toString() === c._id.toString(),
+			);
 			const isCurrent = targetDistrictId && c._id.toString() === targetDistrictId.toString();
 			return {
 				id: c._id.toString(),
@@ -808,7 +872,7 @@ export async function getSummary(req, res) {
 			};
 		});
 
-		// Deduplicate states to ensure exact unique state count
+		// Deduplicate states
 		const uniqueStateNames = new Set();
 		states.forEach((st) => {
 			if (st.name) uniqueStateNames.add(st.name.trim().toLowerCase());
@@ -847,18 +911,17 @@ export async function listDistrictCategories(req, res) {
 		const customConfigs = await DistrictCategory.find({ districtId: targetDistrictId }).lean();
 		const configMap = new Map();
 		customConfigs.forEach((c) => {
-			if (c.categorySlug) configMap.set(c.categorySlug.toLowerCase(), c.enabled);
-			if (c.categoryId) configMap.set(c.categoryId.toString().toLowerCase(), c.enabled);
+			const canonical = resolveCategorySlug(c.categorySlug || c.categoryId);
+			if (canonical) {
+				configMap.set(canonical, c.enabled);
+			}
 		});
 
 		const result = CITY_SECTIONS.map((section) => {
 			let isEnabled = true;
-			const slug = section.slug.toLowerCase();
+			const slug = section.slug;
 			if (configMap.has(slug)) {
 				isEnabled = configMap.get(slug);
-			} else if (section.aliases && section.aliases.some((a) => configMap.has(a.toLowerCase()))) {
-				const matchedAlias = section.aliases.find((a) => configMap.has(a.toLowerCase()));
-				isEnabled = configMap.get(matchedAlias.toLowerCase());
 			}
 
 			return {
@@ -880,23 +943,34 @@ export async function createDistrictCategory(req, res) {
 		if (!districtId || !isValidId(districtId)) {
 			return res.status(400).json({ error: 'Valid districtId is required' });
 		}
-		const slug = (categorySlug || categoryId || '').toLowerCase().trim();
-		if (!slug) return res.status(400).json({ error: 'categorySlug is required' });
+		const rawSlug = categorySlug || categoryId || '';
+		const canonicalSlug = resolveCategorySlug(rawSlug);
+		if (!canonicalSlug) {
+			return res.status(400).json({
+				error: `Invalid category: "${rawSlug}". Must be one of: ${VALID_CATEGORY_SLUGS.join(', ')}`,
+			});
+		}
 
 		const record = await DistrictCategory.findOneAndUpdate(
-			{ districtId, categorySlug: slug },
+			{ districtId, categorySlug: canonicalSlug },
 			{
 				$set: {
 					districtId,
-					categorySlug: slug,
-					categoryId: slug,
+					categorySlug: canonicalSlug,
+					categoryId: canonicalSlug,
 					enabled: Boolean(enabled),
 				},
 			},
-			{ upsert: true, new: true }
+			{ upsert: true, new: true },
 		);
 
-		logAudit(req, 'CATEGORY_TOGGLE', 'DistrictCategory', record._id, `Toggled category ${slug} in district ${districtId} to ${enabled}`);
+		logAudit(
+			req,
+			'CATEGORY_TOGGLE',
+			'DistrictCategory',
+			record._id,
+			`Toggled category ${canonicalSlug} in district ${districtId} to ${enabled}`,
+		);
 
 		return res.status(201).json(record);
 	} catch (error) {
@@ -914,32 +988,41 @@ export async function updateDistrictCategory(req, res) {
 		if (!targetDistrictId || !isValidId(targetDistrictId)) {
 			return res.status(400).json({ error: 'Valid districtId is required' });
 		}
-		if (!categoryId) {
-			return res.status(400).json({ error: 'categoryId / categorySlug is required' });
+
+		const canonicalSlug = resolveCategorySlug(categoryId);
+		if (!canonicalSlug) {
+			return res.status(400).json({
+				error: `Invalid category: "${categoryId}". Must be one of: ${VALID_CATEGORY_SLUGS.join(', ')}`,
+			});
 		}
 
-		const categorySlug = categoryId.toLowerCase().trim();
 		const isEnabled = enabled === true || enabled === 'true' || enabled === 1;
 
 		const updated = await DistrictCategory.findOneAndUpdate(
-			{ districtId: targetDistrictId, categorySlug },
+			{ districtId: targetDistrictId, categorySlug: canonicalSlug },
 			{
 				$set: {
 					districtId: targetDistrictId,
-					categorySlug,
-					categoryId: categorySlug,
+					categorySlug: canonicalSlug,
+					categoryId: canonicalSlug,
 					enabled: isEnabled,
 				},
 			},
-			{ upsert: true, new: true, runValidators: true }
+			{ upsert: true, new: true, runValidators: true },
 		);
 
-		logAudit(req, 'CATEGORY_TOGGLE', 'DistrictCategory', updated._id, `Updated category ${categorySlug} in district ${targetDistrictId} to ${isEnabled}`);
+		logAudit(
+			req,
+			'CATEGORY_TOGGLE',
+			'DistrictCategory',
+			updated._id,
+			`Updated category ${canonicalSlug} in district ${targetDistrictId} to ${isEnabled}`,
+		);
 
 		return res.json({
 			success: true,
 			districtId: targetDistrictId,
-			categorySlug,
+			categorySlug: canonicalSlug,
 			enabled: updated.enabled,
 		});
 	} catch (error) {
@@ -948,8 +1031,7 @@ export async function updateDistrictCategory(req, res) {
 	}
 }
 
-// Backward-compatible aliases for legacy admin routes
+// Aliases for backward-compatible routes
 export const createDistrict = createCity;
 export const updateDistrict = updateCity;
 export const deleteDistrict = deleteCity;
-export const createCategory = (req, res) => res.json({ success: true });

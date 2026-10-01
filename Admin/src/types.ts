@@ -1,64 +1,111 @@
-export type ViewType = 'dashboard' | 'section' | 'popular-places' | 'add-record' | 'manage-admins' | 'category' | 'signin';
+export type ViewType = 'dashboard' | 'section' | 'add-record' | 'manage-admins' | 'signin';
 
-export type RecordStep = 1 | 2 | 3;
+export type RecordStep = 1 | 2 | 3 | 4;
+
+export interface MediaItemData {
+  _id?: string;
+  id?: string;
+  type: 'image' | 'video' | 'pdf' | 'audio';
+  url: string;
+  title?: string;
+  caption?: string;
+  alt?: string;
+  source?: string;
+  license?: string;
+  displayOrder?: number;
+  active?: boolean;
+}
+
+export interface DocumentItemData {
+  _id?: string;
+  id?: string;
+  title: string;
+  type?: string;
+  url: string;
+  author?: string;
+  publisher?: string;
+  source?: string;
+  license?: string;
+  displayOrder?: number;
+  active?: boolean;
+}
+
+export interface SourceItemData {
+  _id?: string;
+  id?: string;
+  sourceTitle: string;
+  sourceUrl?: string;
+  publisher?: string;
+  attribution?: string;
+  license?: string;
+  verificationNotes?: string;
+}
 
 export interface HeritagePlace {
   id: string;
+  _id?: string;
   name: string;
+  title?: string;
   code: string;
-  category: 'Fort' | 'Temple' | 'Palace' | 'Stepwell' | 'Museum' | 'Monument' | 'Haveli' | 'Water Fort' | 'Cultural Heritage' | 'Other' | string;
+  category: string;
+  section: string;
   city: string;
-  subLocation: string;
-  status: 'Published' | 'Draft (In Curation)' | 'Draft (Missing GIS)' | 'Verification Pending' | 'Draft' | string;
-  imageUrl: string;
+  cityName?: string;
+  subLocation?: string;
+  status: 'Published' | 'Draft (In Curation)' | 'Verification Pending' | 'Hidden' | 'Archived' | string;
+  imageUrl?: string;
   description?: string;
-  openingHours?: string;
-  builtYear?: string;
-  dynasty?: string;
+  shortDescription?: string;
+  fullDescription?: string;
   subTitle?: string;
-  visitorTariffs?: Array<{ category: string; price: string; note?: string; highlight?: boolean }>;
-  media?: Array<{ type: string; url: string; alt?: string }>;
+  fields?: Record<string, any>;
+  media?: MediaItemData[];
+  documents?: DocumentItemData[];
+  sources?: SourceItemData[];
   latitude?: number;
   longitude?: number;
-  section?: string;
   districtId?: string;
   stateId?: string;
   visualsMediaEnabled?: boolean;
   bookEnabled?: boolean;
+  publishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface VideoRecord {
   id: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   url: string;
-  duration: string;
-  quality: '4K UHD' | '1080p' | '720p';
-  status: 'Active / Live' | 'Processing';
-  thumbnail: string;
+  thumbnail?: string;
 }
 
 export interface PdfDocument {
   id: string;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   url: string;
-  fileSize: string;
-  pages: string;
-  status: 'Active / Live' | 'Draft';
+  fileSize?: string;
+  publisher?: string;
 }
 
 export interface AdminOfficer {
   id: string;
+  _id?: string;
   name: string;
   code: string;
   designation: string;
-  role: 'Super Admin' | 'Circle Admin' | 'Archival Auditor';
-  status: 'Active' | 'Pending Review' | 'Suspended';
+  role: 'super_admin' | 'admin' | 'editor' | 'reviewer' | 'state_admin' | 'district_admin' | string;
+  status: 'Active' | 'Pending Review' | 'Suspended' | string;
   avatar?: string;
   initials?: string;
-  circle: string;
+  circle?: string;
   email: string;
+  state?: string;
+  district?: string;
+  stateId?: string;
+  cityId?: string;
   active?: boolean;
 }
 
@@ -95,12 +142,14 @@ export interface FilterTabItem<T = string> {
 }
 
 export interface JurisdictionLedgerItem {
+  id?: string;
   code: string;
   state: string;
   district: string;
   activeCategories: string;
   published: number;
   draft: number;
+  review?: number;
+  total?: number;
   isHighlighted?: boolean;
 }
-

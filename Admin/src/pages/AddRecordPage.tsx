@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { RecordStep, VideoRecord, PdfDocument, HeritagePlace } from '../types';
-import { ToggleSwitch, TariffInput, DaySelector } from '../components/common';
+import { HeritagePlace, MediaItemData, DocumentItemData, SourceItemData } from '../types';
+import { ToggleSwitch, DynamicCategoryFields } from '../components/common';
+import { CATEGORY_DEFINITIONS, VALID_CATEGORY_SLUGS, resolveCategorySlug } from '../config/categoryDefinitions';
+import { MapPin, Info, Image, BookOpen, Link, ArrowLeft, CheckCircle } from 'lucide-react';
 
 export interface AddRecordPageProps {
   onCancel: () => void;
@@ -8,14 +10,8 @@ export interface AddRecordPageProps {
   editingPlace?: HeritagePlace | null;
   selectedState: string;
   selectedDistrict: string;
-  videos?: VideoRecord[];
-  onAddVideo?: (video: Omit<VideoRecord, 'id'>) => void;
-  onDeleteVideo?: (id: string) => void;
-  onPreviewVideo?: (video: VideoRecord) => void;
-  pdfDocuments?: PdfDocument[];
-  onAddPdf?: (pdf: Omit<PdfDocument, 'id'>) => void;
-  onDeletePdf?: (id: string) => void;
-  onPreviewPdf?: (pdf: PdfDocument) => void;
+  selectedDistrictId?: string;
+  selectedCategory?: string;
   onPreviewImage: (url: string, title: string) => void;
 }
 
@@ -25,1592 +21,1059 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
   editingPlace,
   selectedState,
   selectedDistrict,
-  videos = [],
-  onAddVideo,
-  onDeleteVideo,
-  onPreviewVideo = () => {},
-  pdfDocuments = [],
-  onAddPdf,
-  onDeletePdf,
-  onPreviewPdf = () => {},
+  selectedCategory = 'heritage-places',
   onPreviewImage,
 }) => {
-  const [currentStep, setCurrentStep] = useState<RecordStep>(1);
-  const [step2Enabled, setStep2Enabled] = useState(editingPlace?.visualsMediaEnabled !== false);
-  const [step3Enabled, setStep3Enabled] = useState(editingPlace?.bookEnabled !== false);
-  const [locationCoordinatesEnabled, setLocationCoordinatesEnabled] = useState(true);
+  const isEditing = Boolean(editingPlace && (editingPlace.id || editingPlace._id));
 
-  // Local media state for editing without global cross-record pollution
-  const [localVideos, setLocalVideos] = useState<VideoRecord[]>(videos);
-  const [localPdfs, setLocalPdfs] = useState<PdfDocument[]>(pdfDocuments);
+  // Determine initial category
+  const initialCategory = isEditing
+    ? resolveCategorySlug(editingPlace?.section) || 'heritage-places'
+    : resolveCategorySlug(selectedCategory) || 'heritage-places';
 
-  // Form Fields - Step 1
-  const [coverImageUrl, setCoverImageUrl] = useState(editingPlace?.imageUrl || '');
-  const [placeTitle, setPlaceTitle] = useState(editingPlace?.name || '');
-  const [vernacularNames, setVernacularNames] = useState(editingPlace?.subTitle || '');
-  const [badgeType, setBadgeType] = useState(editingPlace?.category || 'Heritage');
-  const [description, setDescription] = useState(editingPlace?.description || '');
+  const [categorySlug, setCategorySlug] = useState<string>(initialCategory);
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
 
-  // Visiting Hours & Tariffs
-  const [openingTime, setOpeningTime] = useState('09:00 AM');
-  const [closingTime, setClosingTime] = useState('05:30 PM');
-  const [cutoffTime, setCutoffTime] = useState('05:00 PM');
-  const [domesticFee, setDomesticFee] = useState('25');
-  const [saarcFee, setSaarcFee] = useState('50');
-  const [foreignFee, setForeignFee] = useState('300');
-  const [studentFee, setStudentFee] = useState('10');
-  const [stillCameraFee, setStillCameraFee] = useState('0');
-  const [videoFee, setVideoFee] = useState('0');
-  const [nightSlotActive, setNightSlotActive] = useState(false);
-  const [nightSlotTime, setNightSlotTime] = useState('07:00 PM - 10:00 PM');
+  // Module toggles
+  const [visualsMediaEnabled, setVisualsMediaEnabled] = useState<boolean>(
+    editingPlace?.visualsMediaEnabled !== false
+  );
+  const [bookEnabled, setBookEnabled] = useState<boolean>(
+    editingPlace?.bookEnabled !== false
+  );
 
-  // Days Open
-  const [selectedDays, setSelectedDays] = useState<string[]>([
-    'Mon',
-    'Tue',
-    'Wed',
-    'Thu',
-    'Fri',
-    'Sat',
-    'Sun',
-  ]);
+  // Common fields
+  const [title, setTitle] = useState<string>(editingPlace?.name || editingPlace?.title || '');
+  const [subtitle, setSubtitle] = useState<string>(editingPlace?.subTitle || '');
+  const [shortDescription, setShortDescription] = useState<string>(
+    editingPlace?.shortDescription || editingPlace?.description || ''
+  );
+  const [fullDescription, setFullDescription] = useState<string>(
+    editingPlace?.fullDescription || editingPlace?.description || ''
+  );
+  const [status, setStatus] = useState<string>(editingPlace?.status || 'Draft (In Curation)');
+  const [coverImageUrl, setCoverImageUrl] = useState<string>(editingPlace?.imageUrl || '');
 
-  // Coordinates
-  const [latitude, setLatitude] = useState(editingPlace?.latitude ? String(editingPlace.latitude) : '');
-  const [longitude, setLongitude] = useState(editingPlace?.longitude ? String(editingPlace.longitude) : '');
-  const [mapsUrl, setMapsUrl] = useState('');
+  // Category-specific dynamic fields
+  const [categoryFields, setCategoryFields] = useState<Record<string, any>>(
+    editingPlace?.fields || {}
+  );
 
-  // Step 2 Form - Video Input
-  const [newVideoTitle, setNewVideoTitle] = useState('');
-  const [newVideoUrl, setNewVideoUrl] = useState('');
+  // Coordinates & Location
+  const [latitude, setLatitude] = useState<string>(
+    editingPlace?.latitude !== undefined && editingPlace?.latitude !== null ? String(editingPlace.latitude) : ''
+  );
+  const [longitude, setLongitude] = useState<string>(
+    editingPlace?.longitude !== undefined && editingPlace?.longitude !== null ? String(editingPlace.longitude) : ''
+  );
 
-  // Step 3 Form - PDF Input
-  const [newPdfName, setNewPdfName] = useState('');
-  const [newPdfUrl, setNewPdfUrl] = useState('');
+  // Media items
+  const [mediaList, setMediaList] = useState<MediaItemData[]>(editingPlace?.media || []);
+  const [newMediaUrl, setNewMediaUrl] = useState<string>('');
+  const [newMediaTitle, setNewMediaTitle] = useState<string>('');
+  const [newMediaType, setNewMediaType] = useState<'image' | 'video'>('image');
 
-  const handleLatitudeChange = (val: string) => {
-    setLatitude(val);
-    const cleanLat = val.replace(/[^0-9.-]/g, '');
-    const cleanLng = longitude.replace(/[^0-9.-]/g, '');
-    if (cleanLat && cleanLng) {
-      setMapsUrl(`https://maps.google.com/?q=${cleanLat},${cleanLng}`);
+  // Documents / Book items
+  const [documentList, setDocumentList] = useState<DocumentItemData[]>(editingPlace?.documents || []);
+  const [newDocTitle, setNewDocTitle] = useState<string>('');
+  const [newDocUrl, setNewDocUrl] = useState<string>('');
+  const [newDocPublisher, setNewDocPublisher] = useState<string>('');
+
+  // Sources
+  const [sourceList, setSourceList] = useState<SourceItemData[]>(editingPlace?.sources || []);
+  const [newSourceTitle, setNewSourceTitle] = useState<string>('');
+  const [newSourceUrl, setNewSourceUrl] = useState<string>('');
+  const [newSourcePublisher, setNewSourcePublisher] = useState<string>('');
+
+  // Form Validation & Feedback
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Initialize or update fields when editingPlace changes
+  useEffect(() => {
+    if (editingPlace) {
+      const resolvedCat = resolveCategorySlug(editingPlace.section) || 'heritage-places';
+      setCategorySlug(resolvedCat);
+      setTitle(editingPlace.name || editingPlace.title || '');
+      setSubtitle(editingPlace.subTitle || '');
+      setShortDescription(editingPlace.shortDescription || editingPlace.description || '');
+      setFullDescription(editingPlace.fullDescription || editingPlace.description || '');
+      setStatus(editingPlace.status || 'Draft (In Curation)');
+      setCoverImageUrl(editingPlace.imageUrl || '');
+      setCategoryFields(editingPlace.fields || {});
+      setLatitude(editingPlace.latitude !== undefined && editingPlace.latitude !== null ? String(editingPlace.latitude) : '');
+      setLongitude(editingPlace.longitude !== undefined && editingPlace.longitude !== null ? String(editingPlace.longitude) : '');
+      setMediaList(editingPlace.media || []);
+      setDocumentList(editingPlace.documents || []);
+      setSourceList(editingPlace.sources || []);
+      setVisualsMediaEnabled(editingPlace.visualsMediaEnabled !== false);
+      setBookEnabled(editingPlace.bookEnabled !== false);
     }
+  }, [editingPlace]);
+
+  // Handle dynamic field modification
+  const handleCategoryFieldChange = (fieldName: string, value: any) => {
+    setCategoryFields((prev) => ({
+      ...prev,
+      [fieldName]: value,
+    }));
   };
 
-  const handleLongitudeChange = (val: string) => {
-    setLongitude(val);
-    const cleanLat = latitude.replace(/[^0-9.-]/g, '');
-    const cleanLng = val.replace(/[^0-9.-]/g, '');
-    if (cleanLat && cleanLng) {
-      setMapsUrl(`https://maps.google.com/?q=${cleanLat},${cleanLng}`);
-    }
-  };
-
+  // Detect GPS location from device
   const handleDetectDeviceLocation = () => {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const lat = pos.coords.latitude.toFixed(6);
-          const lng = pos.coords.longitude.toFixed(6);
-          setLatitude(lat);
-          setLongitude(lng);
-          setMapsUrl(`https://maps.google.com/?q=${lat},${lng}`);
+          setLatitude(pos.coords.latitude.toFixed(6));
+          setLongitude(pos.coords.longitude.toFixed(6));
+          setValidationError(null);
         },
         (err) => {
-          alert('Could not retrieve current location: ' + err.message);
+          setValidationError(`Location detection failed: ${err.message}`);
         },
         { enableHighAccuracy: true, timeout: 10000 }
       );
     } else {
-      alert('Geolocation is not supported by your browser.');
+      setValidationError('Geolocation is not supported by your browser.');
     }
   };
 
-  useEffect(() => {
-    if (!editingPlace) {
-      setCoverImageUrl('');
-      setPlaceTitle('');
-      setBadgeType('Heritage');
-      setDescription('');
-      setVernacularNames('');
-      setLatitude('');
-      setLongitude('');
-      setMapsUrl('');
-      setStep2Enabled(true);
-      setStep3Enabled(true);
-      setLocalVideos([]);
-      setLocalPdfs([]);
-      setDomesticFee('25');
-      setSaarcFee('50');
-      setForeignFee('300');
-      setStudentFee('10');
-      setStillCameraFee('0');
-      setVideoFee('0');
-      return;
+  // Helper to extract YouTube video ID and thumbnail
+  const getYouTubeInfo = (url: string) => {
+    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/);
+    if (match && match[1]) {
+      return {
+        videoId: match[1],
+        thumbnailUrl: `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`,
+      };
     }
-    setCoverImageUrl(editingPlace.imageUrl || '');
-    setPlaceTitle(editingPlace.name || '');
-    setBadgeType(editingPlace.category || 'Heritage');
-    setDescription(editingPlace.description || '');
-    setVernacularNames(editingPlace.subTitle || '');
-    setStep2Enabled(editingPlace.visualsMediaEnabled !== false);
-    setStep3Enabled(editingPlace.bookEnabled !== false);
-    if (editingPlace.latitude) setLatitude(String(editingPlace.latitude));
-    if (editingPlace.longitude) setLongitude(String(editingPlace.longitude));
-    if (editingPlace.latitude && editingPlace.longitude) {
-      setMapsUrl(`https://maps.google.com/?q=${editingPlace.latitude},${editingPlace.longitude}`);
-    }
-    if (editingPlace.openingHours) {
-      const parts = editingPlace.openingHours.split('-');
-      if (parts[0]) setOpeningTime(parts[0].trim());
-      if (parts[1]) setClosingTime(parts[1].trim());
-    }
+    return null;
+  };
 
-    // Restore visitor tariffs
-    if (Array.isArray(editingPlace.visitorTariffs)) {
-      for (const t of editingPlace.visitorTariffs) {
-        const cat = (t.category || '').toLowerCase();
-        const price = (t.price || '').replace(/[^0-9]/g, '');
-        if (cat.includes('indian') || cat.includes('domestic')) setDomesticFee(price || '25');
-        else if (cat.includes('saarc') || cat.includes('bimstec')) setSaarcFee(price || '50');
-        else if (cat.includes('foreign')) setForeignFee(price || '300');
-        else if (cat.includes('student')) setStudentFee(price || '10');
-        else if (cat.includes('still')) setStillCameraFee(price || '0');
-        else if (cat.includes('video') || cat.includes('drone')) setVideoFee(price || '0');
+  // Add media item
+  const handleAddMedia = () => {
+    if (!newMediaUrl.trim()) return;
+
+    let mediaUrl = newMediaUrl.trim();
+    let alt = newMediaTitle.trim() || 'Media Item';
+
+    if (newMediaType === 'video') {
+      const yt = getYouTubeInfo(mediaUrl);
+      if (yt) {
+        alt = `YouTube: ${yt.videoId}`;
       }
     }
 
-    // Restore media items into localVideos and localPdfs
-    if (Array.isArray(editingPlace.media)) {
-      const restoredVids: VideoRecord[] = editingPlace.media
-        .filter((m) => m?.type === 'video')
-        .map((m, idx) => ({
-          id: `vid-${idx}-${Date.now()}`,
-          title: m.alt || `Heritage Video Stream ${idx + 1}`,
-          subtitle: `${selectedState} State Heritage Series`,
-          url: m.url,
-          duration: '07:30 min',
-          quality: '4K UHD',
-          status: 'Active / Live',
-          thumbnail: 'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=400&q=80',
-        }));
-      setLocalVideos(restoredVids);
+    const newItem: MediaItemData = {
+      type: newMediaType,
+      url: mediaUrl,
+      title: newMediaTitle.trim() || undefined,
+      alt,
+      active: true,
+      displayOrder: mediaList.length + 1,
+    };
 
-      const restoredPdfs: PdfDocument[] = editingPlace.media
-        .filter((m) => m?.type === 'pdf')
-        .map((m, idx) => ({
-          id: `pdf-${idx}-${Date.now()}`,
-          title: m.alt || `Official Archival PDF ${idx + 1}`,
-          subtitle: `${selectedState} State Archaeology Document`,
-          url: m.url,
-          fileSize: '6.4 MB',
-          pages: '24 Pgs • PDF',
-          status: 'Active / Live',
-        }));
-      setLocalPdfs(restoredPdfs);
-    } else {
-      setLocalVideos([]);
-      setLocalPdfs([]);
-    }
-
-    setSelectedDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
-  }, [editingPlace, selectedState]);
-
-  const toggleDay = (day: string) => {
-    if (selectedDays.includes(day)) {
-      setSelectedDays(selectedDays.filter((d) => d !== day));
-    } else {
-      setSelectedDays([...selectedDays, day]);
-    }
+    setMediaList((prev) => [...prev, newItem]);
+    setNewMediaUrl('');
+    setNewMediaTitle('');
   };
 
-  const handleAddVideoSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!newVideoTitle.trim() || !newVideoUrl.trim()) {
-      alert('Please provide both Video Title and YouTube Link.');
+  const handleRemoveMedia = (index: number) => {
+    setMediaList((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  // Add document item
+  const handleAddDocument = () => {
+    if (!newDocTitle.trim() || !newDocUrl.trim()) return;
+
+    const newDoc: DocumentItemData = {
+      title: newDocTitle.trim(),
+      url: newDocUrl.trim(),
+      publisher: newDocPublisher.trim() || undefined,
+      type: 'pdf',
+      active: true,
+      displayOrder: documentList.length + 1,
+    };
+
+    setDocumentList((prev) => [...prev, newDoc]);
+    setNewDocTitle('');
+    setNewDocUrl('');
+    setNewDocPublisher('');
+  };
+
+  const handleRemoveDocument = (index: number) => {
+    setDocumentList((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  // Add source item
+  const handleAddSource = () => {
+    if (!newSourceTitle.trim()) return;
+
+    const newSource: SourceItemData = {
+      sourceTitle: newSourceTitle.trim(),
+      sourceUrl: newSourceUrl.trim() || undefined,
+      publisher: newSourcePublisher.trim() || undefined,
+    };
+
+    setSourceList((prev) => [...prev, newSource]);
+    setNewSourceTitle('');
+    setNewSourceUrl('');
+    setNewSourcePublisher('');
+  };
+
+  const handleRemoveSource = (index: number) => {
+    setSourceList((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  // Submit and validate form
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setValidationError(null);
+
+    // 1. Common required validation
+    if (!title.trim() || title.trim().length < 2) {
+      setValidationError('Record title is required (minimum 2 characters).');
+      setCurrentStep(1);
       return;
     }
-    const newVid: VideoRecord = {
-      id: `vid-${Date.now()}`,
-      title: newVideoTitle,
-      subtitle: 'Newly Added Stream',
-      url: newVideoUrl,
-      duration: '07:30 min',
-      quality: '4K UHD',
-      status: 'Active / Live',
-      thumbnail:
-        'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=400&q=80',
-    };
-    setLocalVideos((prev) => [newVid, ...prev]);
-    onAddVideo?.(newVid);
-    setNewVideoTitle('');
-    setNewVideoUrl('');
-  };
 
-  const handleDeleteVideoItem = (id: string) => {
-    setLocalVideos((prev) => prev.filter((v) => v.id !== id));
-    onDeleteVideo?.(id);
-  };
+    // 2. Coordinate validation (if provided)
+    let latNum: number | undefined = undefined;
+    let lngNum: number | undefined = undefined;
 
-  const handleAddPdfSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!newPdfName.trim() || !newPdfUrl.trim()) {
-      alert('Please provide both PDF Name and Document URL.');
-      return;
+    if (latitude.trim() || longitude.trim()) {
+      const parsedLat = Number(latitude);
+      const parsedLng = Number(longitude);
+
+      if (isNaN(parsedLat) || parsedLat < -90 || parsedLat > 90) {
+        setValidationError('Invalid Latitude: must be a number between -90 and 90.');
+        setCurrentStep(1);
+        return;
+      }
+
+      if (isNaN(parsedLng) || parsedLng < -180 || parsedLng > 180) {
+        setValidationError('Invalid Longitude: must be a number between -180 and 180.');
+        setCurrentStep(1);
+        return;
+      }
+
+      latNum = parsedLat;
+      lngNum = parsedLng;
     }
-    const newPdf: PdfDocument = {
-      id: `pdf-${Date.now()}`,
-      title: newPdfName,
-      subtitle: `${selectedState} State Archaeology & Culture Series`,
-      url: newPdfUrl,
-      fileSize: '6.4 MB',
-      pages: '24 Pgs • PDF',
-      status: 'Active / Live',
-    };
-    setLocalPdfs((prev) => [newPdf, ...prev]);
-    onAddPdf?.(newPdf);
-    setNewPdfName('');
-    setNewPdfUrl('');
-  };
 
-  const handleDeletePdfItem = (id: string) => {
-    setLocalPdfs((prev) => prev.filter((p) => p.id !== id));
-    onDeletePdf?.(id);
-  };
+    // 3. Assemble media array (include cover image if set)
+    const finalMedia: MediaItemData[] = [...mediaList];
+    if (coverImageUrl.trim() && !finalMedia.some((m) => m.url === coverImageUrl.trim())) {
+      finalMedia.unshift({
+        type: 'image',
+        url: coverImageUrl.trim(),
+        title: title.trim(),
+        alt: title.trim(),
+        displayOrder: 0,
+        active: true,
+      });
+    }
 
-  const buildPayload = (statusString: string) => {
-    const latNum = parseFloat(latitude.replace(/[^0-9.-]/g, '')) || 0;
-    const lngNum = parseFloat(longitude.replace(/[^0-9.-]/g, '')) || 0;
-
-    return {
-      id: editingPlace?.id,
-      name: placeTitle,
-      category: badgeType as any,
-      city: selectedDistrict,
-      subLocation: `${selectedDistrict} Circle`,
-      status: statusString,
-      imageUrl: coverImageUrl,
-      description,
-      subTitle: vernacularNames,
-      openingHours: `${openingTime} - ${closingTime}`,
+    const payload: Partial<HeritagePlace> = {
+      name: title.trim(),
+      title: title.trim(),
+      subTitle: subtitle.trim(),
+      shortDescription: shortDescription.trim(),
+      fullDescription: fullDescription.trim(),
+      description: shortDescription.trim() || fullDescription.trim(),
+      section: categorySlug,
+      category: CATEGORY_DEFINITIONS[categorySlug]?.title || 'Heritage & Places',
+      imageUrl: coverImageUrl.trim() || (finalMedia.find((m) => m.type === 'image')?.url || ''),
+      status,
+      fields: {
+        ...categoryFields,
+        imageUrl: coverImageUrl.trim(),
+        visualsMediaEnabled,
+        bookEnabled,
+      },
+      media: finalMedia,
+      documents: documentList,
+      sources: sourceList,
       latitude: latNum,
       longitude: lngNum,
-      visualsMediaEnabled: step2Enabled,
-      bookEnabled: step3Enabled,
-      visitorTariffs: [
-        { category: 'Indian Citizens', price: `₹${domesticFee}`, highlight: true },
-        { category: 'SAARC Citizens', price: `₹${saarcFee}` },
-        { category: 'Foreign Visitors', price: `₹${foreignFee}` },
-        { category: 'Students', price: `₹${studentFee}` },
-        { category: 'Still Camera', price: `₹${stillCameraFee}` },
-        { category: 'Video Camera', price: `₹${videoFee}` },
-      ],
-      media: [
-        ...(coverImageUrl ? [{ type: 'image', url: coverImageUrl, alt: placeTitle }] : []),
-        ...(step2Enabled ? localVideos.map((video) => ({ type: 'video', url: video.url, alt: video.title })) : []),
-        ...(step3Enabled ? localPdfs.map((pdf) => ({ type: 'pdf', url: pdf.url, alt: pdf.title })) : []),
-      ],
+      visualsMediaEnabled,
+      bookEnabled,
     };
+
+    const targetExistingId = editingPlace?._id || editingPlace?.id;
+    onPublish(payload, targetExistingId);
   };
 
-  const handleFinalPublish = () => {
-    onPublish(buildPayload('Published'), editingPlace?.id);
-  };
-
-  const handleSaveDraft = () => {
-    onPublish(buildPayload('Draft (In Curation)'), editingPlace?.id);
-  };
-
-  const handleSubmitForReview = () => {
-    onPublish(buildPayload('Verification Pending'), editingPlace?.id);
-  };
+  const activeCategoryDef = CATEGORY_DEFINITIONS[categorySlug] || CATEGORY_DEFINITIONS['heritage-places'];
 
   return (
-    <div
-      id="add-record-wizard-container"
-      className="flex-1 h-full overflow-y-auto bg-[#fbf9f5] p-4 sm:p-8 lg:p-10 select-text"
-    >
-      <div className="max-w-6xl mx-auto space-y-7 pb-16">
-        {/* Header & Action Bar */}
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-2 border-b border-surface-container">
-          <div className="space-y-2">
-            {/* Context Pill */}
-            <div className="flex flex-wrap items-center gap-2.5 text-xs font-semibold text-secondary">
-              <span className="text-[0.66rem] font-bold uppercase tracking-wider text-primary bg-primary/10 px-2.5 py-0.5 rounded border border-primary/20">
-                Heritage Surveillance &amp; Directory • Curation Desk
-              </span>
-              <span className="text-secondary/60">•</span>
-              <span className="text-on-surface-variant font-medium">
-                {selectedState} Circle
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-[0.68rem] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                {editingPlace ? 'Editing Registry Entry' : 'Drafting New Entry'}
-              </span>
-            </div>
-
-            {/* Main Title */}
-            <h1 className="font-display text-3xl lg:text-4xl font-bold text-on-surface tracking-tight">
-              {editingPlace ? 'Edit Heritage Record' : 'Add New Heritage Record'}
-            </h1>
-            <p className="text-xs lg:text-sm text-secondary">
-              Catalog official architectural monuments, geographical sites, or intangible cultural
-              assets into the National Registry.
-            </p>
+    <div className="w-full flex-1 px-4 md:px-8 py-6 max-w-[1440px] mx-auto select-text animate-fade-in space-y-6">
+      {/* Top Breadcrumb & Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-surface-container">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs text-secondary flex-wrap">
+            <span className="text-[0.68rem] font-bold uppercase tracking-wider text-primary bg-primary/10 px-2.5 py-0.5 rounded-full border border-primary/20 flex items-center gap-1">
+              <MapPin className="w-3 h-3 text-primary" />
+              <span>{selectedState}</span>
+            </span>
+            <span className="text-secondary font-bold">→</span>
+            <span className="text-[0.68rem] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+              {selectedDistrict}
+            </span>
+            <span className="text-secondary font-bold">→</span>
+            <span className="text-xs font-semibold text-on-surface flex items-center gap-1">
+              <span className="material-symbols-outlined text-sm text-primary">{activeCategoryDef.icon}</span>
+              <span>{activeCategoryDef.title}</span>
+            </span>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2.5 shrink-0 flex-wrap justify-end">
-            <button
-              id="top-save-draft-btn"
-              type="button"
-              onClick={handleSaveDraft}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-surface-container-lowest hover:bg-surface-container text-on-surface text-xs font-semibold border border-outline-variant/60 transition-colors shadow-sm"
-            >
-              <span className="material-symbols-outlined text-base text-secondary">save</span>
-              <span>Save Draft</span>
-            </button>
-            <button
-              id="top-submit-review-btn"
-              type="button"
-              onClick={handleSubmitForReview}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 text-xs font-semibold border border-amber-300 transition-colors shadow-sm"
-            >
-              <span className="material-symbols-outlined text-base text-amber-800">rate_review</span>
-              <span>Submit for Verification</span>
-            </button>
-            <button
-              id="top-publish-btn"
-              type="button"
-              onClick={handleFinalPublish}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary hover:bg-primary-container text-white text-xs font-semibold shadow-sm transition-all"
-            >
-              <span className="material-symbols-outlined text-base">publish</span>
-              <span>Publish Live</span>
-            </button>
-          </div>
-        </header>
-
-        {/* Step Stepper / Tab Bar (3 Steps) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Step 1 Card */}
-          <div
-            id="stepper-step-1"
-            onClick={() => setCurrentStep(1)}
-            className={`rounded-xl p-4 shadow-sm flex items-start gap-3.5 cursor-pointer transition-all ${
-              currentStep === 1
-                ? 'bg-surface-container-lowest border-2 border-primary relative overflow-hidden ring-1 ring-amber-500/30'
-                : 'bg-surface-container-lowest border border-outline-variant/50 hover:border-outline-variant'
-            }`}
-          >
-            <div
-              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                currentStep === 1
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
-              }`}
-            >
-              <span className="material-symbols-outlined text-lg">
-                {currentStep === 1 ? 'edit_document' : 'check_circle'}
-              </span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between">
-                <span
-                  className={`text-[0.68rem] font-bold uppercase tracking-wider ${
-                    currentStep === 1 ? 'text-primary' : 'text-emerald-700'
-                  }`}
-                >
-                  Step 1
-                </span>
-                <span
-                  className={`px-2 py-0.5 rounded text-[0.62rem] font-bold border ${
-                    currentStep === 1
-                      ? 'bg-amber-100 text-amber-900 border-amber-200'
-                      : 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
-                  }`}
-                >
-                  {currentStep === 1 ? 'Active' : 'Completed'}
-                </span>
-              </div>
-              <h3 className="text-sm font-bold text-on-surface mt-0.5">Basic Info</h3>
-              <p className="text-[0.72rem] text-secondary truncate mt-0.5">
-                Core identification &amp; governance
-              </p>
-            </div>
-          </div>
-
-          {/* Step 2 Card */}
-          <div
-            id="stepper-step-2"
-            onClick={() => setCurrentStep(2)}
-            className={`rounded-xl p-4 shadow-sm flex items-start gap-3.5 cursor-pointer transition-all ${
-              currentStep === 2
-                ? 'bg-surface-container-lowest border-2 border-primary relative overflow-hidden ring-1 ring-amber-500/30'
-                : 'bg-surface-container-lowest border border-outline-variant/50 hover:border-outline-variant opacity-95'
-            }`}
-          >
-            <div
-              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                currentStep === 2
-                  ? 'bg-primary text-white shadow-sm'
-                  : currentStep > 2
-                  ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
-                  : 'bg-surface-container text-secondary border border-surface-container'
-              }`}
-            >
-              <span className="material-symbols-outlined text-lg">
-                {currentStep > 2 ? 'check_circle' : 'photo_library'}
-              </span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between">
-                <span
-                  className={`text-[0.68rem] font-bold uppercase tracking-wider ${
-                    currentStep === 2 ? 'text-primary' : currentStep > 2 ? 'text-emerald-700' : 'text-secondary'
-                  }`}
-                >
-                  Step 2
-                </span>
-                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  <ToggleSwitch
-                    checked={step2Enabled}
-                    onChange={setStep2Enabled}
-                    statusLabels={{ active: 'Enabled', inactive: 'Disabled' }}
-                    color="amber"
-                    size="sm"
-                  />
-                  <span
-                    className={`px-2 py-0.5 rounded text-[0.62rem] font-bold border ${
-                      currentStep === 2
-                        ? 'bg-amber-100 text-amber-900 border-amber-200'
-                        : currentStep > 2
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
-                        : 'bg-surface-container text-secondary border-outline-variant/50'
-                    }`}
-                  >
-                    {currentStep === 2 ? 'Active' : currentStep > 2 ? 'Completed' : 'Ready'}
-                  </span>
-                </div>
-              </div>
-              <h3 className="text-sm font-bold text-on-surface mt-0.5">Visuals &amp; Media</h3>
-              <p className="text-[0.72rem] text-secondary truncate mt-0.5">
-                Photographs, 3D scans &amp; media
-              </p>
-            </div>
-          </div>
-
-          {/* Step 3 Card */}
-          <div
-            id="stepper-step-3"
-            onClick={() => setCurrentStep(3)}
-            className={`rounded-xl p-4 shadow-sm flex items-start gap-3.5 cursor-pointer transition-all ${
-              currentStep === 3
-                ? 'bg-surface-container-lowest border-2 border-primary relative overflow-hidden ring-1 ring-amber-500/30'
-                : 'bg-surface-container-lowest border border-outline-variant/50 hover:border-outline-variant opacity-90'
-            }`}
-          >
-            <div
-              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                currentStep === 3
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'bg-surface-container text-secondary border border-surface-container'
-              }`}
-            >
-              <span className="material-symbols-outlined text-lg">menu_book</span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between">
-                <span
-                  className={`text-[0.68rem] font-bold uppercase tracking-wider ${
-                    currentStep === 3 ? 'text-primary' : 'text-secondary'
-                  }`}
-                >
-                  Step 3
-                </span>
-                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  <ToggleSwitch
-                    checked={step3Enabled}
-                    onChange={setStep3Enabled}
-                    statusLabels={{ active: 'Enabled', inactive: 'Disabled' }}
-                    color="amber"
-                    size="sm"
-                  />
-                  <span
-                    className={`px-2 py-0.5 rounded text-[0.62rem] font-bold border ${
-                      currentStep === 3
-                        ? 'bg-amber-100 text-amber-900 border-amber-200'
-                        : 'bg-surface-container text-secondary border-outline-variant/50'
-                    }`}
-                  >
-                    {currentStep === 3 ? 'Active' : 'Ready'}
-                  </span>
-                </div>
-              </div>
-              <h3 className="text-sm font-bold text-on-surface mt-0.5">
-                Book &amp; Documentation
-              </h3>
-              <p className="text-[0.72rem] text-secondary truncate mt-0.5">
-                Archival monographs, research PDFs &amp; gazetteers
-              </p>
-            </div>
-          </div>
+          <h1 className="font-display text-xl md:text-2xl font-bold text-on-surface">
+            {isEditing ? `Edit Record: ${editingPlace?.name || title}` : `Create New ${activeCategoryDef.title} Record`}
+          </h1>
         </div>
 
-        {/* ========================================================================= */}
-        {/* STEP 1: BASIC INFO                                                       */}
-        {/* ========================================================================= */}
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3.5 py-2 rounded-lg border border-surface-container hover:bg-surface-container text-xs font-semibold text-secondary flex items-center gap-1.5 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Cancel</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all"
+          >
+            <CheckCircle className="w-3.5 h-3.5" />
+            <span>{isEditing ? 'Update Document' : 'Save & Publish'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Validation Error Banner */}
+      {validationError && (
+        <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2 animate-in fade-in">
+          <span className="material-symbols-outlined text-red-600 text-base shrink-0">error</span>
+          <span>{validationError}</span>
+        </div>
+      )}
+
+      {/* Form Steps Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-surface-container pb-2 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setCurrentStep(1)}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors ${
+            currentStep === 1
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-secondary hover:text-on-surface hover:bg-surface-container-low'
+          }`}
+        >
+          <Info className="w-3.5 h-3.5" />
+          <span>1. Core Details &amp; Category</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setCurrentStep(2)}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors ${
+            currentStep === 2
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-secondary hover:text-on-surface hover:bg-surface-container-low'
+          }`}
+        >
+          <Image className="w-3.5 h-3.5" />
+          <span>2. Visuals &amp; Media ({mediaList.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setCurrentStep(3)}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors ${
+            currentStep === 3
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-secondary hover:text-on-surface hover:bg-surface-container-low'
+          }`}
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          <span>3. Books &amp; Documents ({documentList.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setCurrentStep(4)}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors ${
+            currentStep === 4
+              ? 'bg-primary text-white shadow-sm'
+              : 'text-secondary hover:text-on-surface hover:bg-surface-container-low'
+          }`}
+        >
+          <Link className="w-3.5 h-3.5" />
+          <span>4. Sources &amp; Citations ({sourceList.length})</span>
+        </button>
+      </div>
+
+      {/* Step Content */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* STEP 1: Core Details, Dynamic Fields, Location */}
         {currentStep === 1 && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            {/* Form Section 1: Monument & Place Identity */}
-            <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 p-6 shadow-sm space-y-5">
-              <div className="flex items-center gap-2.5 pb-3 border-b border-surface-container">
-                <span className="material-symbols-outlined text-primary text-xl">foundation</span>
-                <h2 className="font-display text-base lg:text-lg font-bold text-on-surface">
-                  1. Monument Identity &amp; Cover Imagery
-                </h2>
+          <div className="space-y-6">
+            {/* Category Selector Card */}
+            <div className="p-5 rounded-xl bg-surface-container-lowest border border-surface-container shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                    Category Selection (Fixed Phase-1 Categories)
+                  </h2>
+                  <p className="text-[0.68rem] text-secondary">
+                    {isEditing
+                      ? 'Category is permanently bound to this record and cannot be changed during edit.'
+                      : 'Select the canonical category that defines this record’s form structure.'}
+                  </p>
+                </div>
+                {isEditing && (
+                  <span className="text-[0.65rem] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                    Category Locked
+                  </span>
+                )}
               </div>
 
-              <div className="space-y-4">
-                {/* Cover Image URL */}
-                <div className="space-y-1.5">
-                  <label className="block text-[0.7rem] font-bold text-on-surface uppercase tracking-wider">
-                    Cover Image Link / URL <span className="text-primary">*</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 pt-1">
+                {VALID_CATEGORY_SLUGS.map((slug) => {
+                  const def = CATEGORY_DEFINITIONS[slug];
+                  const isSelected = categorySlug === slug;
+
+                  return (
+                    <button
+                      key={slug}
+                      type="button"
+                      disabled={isEditing}
+                      onClick={() => setCategorySlug(slug)}
+                      className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-2 ${
+                        isSelected
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary shadow-xs'
+                          : 'border-surface-container bg-surface-container-lowest hover:bg-surface-container-low/50 opacity-80 hover:opacity-100'
+                      } ${isEditing && !isSelected ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`material-symbols-outlined text-lg ${
+                            isSelected ? 'text-primary' : 'text-secondary'
+                          }`}
+                        >
+                          {def.icon}
+                        </span>
+                        {isSelected && <span className="w-2 h-2 rounded-full bg-primary" />}
+                      </div>
+                      <span className="text-xs font-bold text-on-surface leading-tight truncate">
+                        {def.title}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Basic Information */}
+            <div className="p-5 rounded-xl bg-surface-container-lowest border border-surface-container shadow-xs space-y-4">
+              <h2 className="text-xs font-bold text-on-surface uppercase tracking-wider border-b border-surface-container pb-2">
+                Common Record Information
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5 md:col-span-2">
+                  <label htmlFor="record-title" className="block text-xs font-semibold text-on-surface">
+                    Record Title / Name <span className="text-red-500">*</span>
                   </label>
-                  <div className="relative flex items-center">
-                    <span className="material-symbols-outlined text-secondary text-base absolute left-3 pointer-events-none">
-                      link
-                    </span>
+                  <input
+                    id="record-title"
+                    type="text"
+                    required
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g., Rajwada Palace / Chanderi Silk Weaving"
+                    className="w-full px-3.5 py-2 bg-surface-container-low border border-surface-container rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="record-subtitle" className="block text-xs font-semibold text-on-surface">
+                    Subtitle / Vernacular Name
+                  </label>
+                  <input
+                    id="record-subtitle"
+                    type="text"
+                    value={subtitle}
+                    onChange={(e) => setSubtitle(e.target.value)}
+                    placeholder="e.g., राजवाड़ा महल"
+                    className="w-full px-3 py-2 bg-surface-container-low border border-surface-container rounded-lg text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="record-status" className="block text-xs font-semibold text-on-surface">
+                    Curation Status
+                  </label>
+                  <select
+                    id="record-status"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container-low border border-surface-container rounded-lg text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                  >
+                    <option value="Draft (In Curation)">Draft (In Curation)</option>
+                    <option value="Verification Pending">Verification Pending (Review)</option>
+                    <option value="Published">Published &amp; Live</option>
+                    <option value="Hidden">Hidden</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5 md:col-span-2">
+                  <label htmlFor="record-cover-image" className="block text-xs font-semibold text-on-surface">
+                    Primary Cover Image URL
+                  </label>
+                  <div className="flex gap-2">
                     <input
-                      id="cover-image-input"
-                      className="w-full bg-[#fbf9f5] rounded-lg pl-9 pr-24 py-2.5 text-xs text-on-surface border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder:text-secondary/60"
-                      placeholder="https://images.unsplash.com/... or official CDN asset URL"
+                      id="record-cover-image"
                       type="url"
                       value={coverImageUrl}
                       onChange={(e) => setCoverImageUrl(e.target.value)}
+                      placeholder="https://images.unsplash.com/photo-..."
+                      className="flex-1 px-3 py-2 bg-surface-container-low border border-surface-container rounded-lg text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
                     />
-                    <button
-                      id="preview-cover-btn"
-                      type="button"
-                      onClick={() => onPreviewImage(coverImageUrl, placeTitle)}
-                      className="absolute right-2 px-2.5 py-1 text-[0.68rem] font-semibold bg-surface-container hover:bg-surface-container-high rounded text-secondary hover:text-on-surface border border-outline-variant/40 transition-colors flex items-center gap-1"
-                    >
-                      <span className="material-symbols-outlined text-xs">preview</span>
-                      <span>Preview</span>
-                    </button>
-                  </div>
-                  <p className="text-[0.66rem] text-secondary">
-                    Direct CDN link or high-resolution public image URL for the primary cover banner.
-                  </p>
-                </div>
-
-                {/* Place Name & Vernacular Names */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="block text-[0.7rem] font-bold text-on-surface uppercase tracking-wider">
-                      Title of Place / Monument Name <span className="text-primary">*</span>
-                    </label>
-                    <input
-                      id="place-title-input"
-                      className="w-full bg-[#fbf9f5] rounded-lg px-3.5 py-2.5 text-xs text-on-surface border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder:text-secondary/60"
-                      placeholder="e.g. Nahargarh Fort, Jaipur"
-                      type="text"
-                      value={placeTitle}
-                      onChange={(e) => setPlaceTitle(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="block text-[0.7rem] font-bold text-on-surface uppercase tracking-wider">
-                      Alternative / Vernacular Names
-                    </label>
-                    <input
-                      id="vernacular-names-input"
-                      className="w-full bg-[#fbf9f5] rounded-lg px-3.5 py-2.5 text-xs text-on-surface border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder:text-secondary/60"
-                      placeholder="e.g. Sudarshangarh, Tiger Fort"
-                      type="text"
-                      value={vernacularNames}
-                      onChange={(e) => setVernacularNames(e.target.value)}
-                    />
+                    {coverImageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => onPreviewImage(coverImageUrl, title || 'Cover Image')}
+                        className="px-3 py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-xs font-semibold text-on-surface"
+                      >
+                        Preview
+                      </button>
+                    )}
                   </div>
                 </div>
 
-                {/* Badge or Mark Radio Cards */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-[0.7rem] font-bold text-on-surface uppercase tracking-wider">
-                      Badge or Mark (Heritage Type) <span className="text-primary">*</span>
-                    </label>
-                    <span className="text-[0.66rem] text-secondary">
-                      Select primary architectural badge
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {[
-                      { label: 'Fort', icon: 'fort' },
-                      { label: 'Temple', icon: 'temple_hindu' },
-                      { label: 'Palace', icon: 'castle' },
-                      { label: 'Stepwell', icon: 'water' },
-                      { label: 'Museum', icon: 'museum' },
-                      { label: 'Monument', icon: 'account_balance' },
-                      { label: 'Haveli', icon: 'home_work' },
-                      { label: 'Other', icon: 'more_horiz' },
-                    ].map((badge) => {
-                      const isChecked = badgeType === badge.label;
-                      return (
-                        <label
-                          key={badge.label}
-                          className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
-                            isChecked
-                              ? 'border-primary bg-amber-50'
-                              : 'border-outline-variant/60 bg-[#fbf9f5] hover:bg-surface-container'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="place_badge"
-                            checked={isChecked}
-                            onChange={() => setBadgeType(badge.label)}
-                            className="text-primary focus:ring-primary h-3.5 w-3.5"
-                          />
-                          <span
-                            className={`text-xs flex items-center gap-1 ${
-                              isChecked ? 'font-semibold text-amber-900' : 'font-medium text-on-surface'
-                            }`}
-                          >
-                            <span
-                              className={`material-symbols-outlined text-sm ${
-                                isChecked ? 'text-primary' : 'text-secondary'
-                              }`}
-                            >
-                              {badge.icon}
-                            </span>
-                            {badge.label}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Description & Cultural Brief */}
-                <div className="space-y-1.5 pt-1">
-                  <label className="block text-[0.7rem] font-bold text-on-surface uppercase tracking-wider">
-                    Place Description &amp; Cultural Brief <span className="text-primary">*</span>
+                <div className="space-y-1.5 md:col-span-2">
+                  <label htmlFor="record-short-desc" className="block text-xs font-semibold text-on-surface">
+                    Short Summary (Displays in search &amp; cards)
                   </label>
                   <textarea
-                    id="place-description-input"
-                    className="w-full bg-[#fbf9f5] rounded-lg p-3.5 text-xs text-on-surface border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder:text-secondary/60 resize-y"
-                    placeholder="Detail chronological lineage, founding monarch/guild, century of construction, and conservation mandate..."
-                    rows={4}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
+                    id="record-short-desc"
+                    rows={2}
+                    value={shortDescription}
+                    onChange={(e) => setShortDescription(e.target.value)}
+                    placeholder="Brief 1-2 sentence overview..."
+                    className="w-full px-3 py-2 bg-surface-container-low border border-surface-container rounded-lg text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
                   />
-                  <p className="text-[0.66rem] text-secondary">
-                    Include architectural style highlights, historical chronology, and key conservation notes.
+                </div>
+
+                <div className="space-y-1.5 md:col-span-2">
+                  <label htmlFor="record-full-desc" className="block text-xs font-semibold text-on-surface">
+                    Full Description &amp; Historical Context
+                  </label>
+                  <textarea
+                    id="record-full-desc"
+                    rows={4}
+                    value={fullDescription}
+                    onChange={(e) => setFullDescription(e.target.value)}
+                    placeholder="Detailed history, architecture, cultural significance..."
+                    className="w-full px-3 py-2 bg-surface-container-low border border-surface-container rounded-lg text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* DYNAMIC CATEGORY FIELDS COMPONENT */}
+            <DynamicCategoryFields
+              categorySlug={categorySlug}
+              values={categoryFields}
+              onChange={handleCategoryFieldChange}
+            />
+
+            {/* Geographic Coordinates & Location */}
+            <div className="p-5 rounded-xl bg-surface-container-lowest border border-surface-container shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-surface-container pb-2">
+                <div>
+                  <h2 className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                    Geographic Coordinates (Around Me Integration)
+                  </h2>
+                  <p className="text-[0.68rem] text-secondary">
+                    Provide real coordinates for map plotting and location radius features.
                   </p>
                 </div>
-              </div>
-            </section>
-
-            {/* Form Section 2: Visiting Hours & Entry Tariff */}
-            <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 p-6 shadow-sm space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-container gap-2">
-                <div className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-primary text-xl">schedule</span>
-                  <div>
-                    <h2 className="font-display text-base lg:text-lg font-bold text-on-surface">
-                      2. Visiting Hours &amp; Entry Tariff
-                    </h2>
-                    <p className="text-[0.68rem] text-secondary">
-                      Public access schedule, ticket tariff slabs, exemptions, and ticketing protocols.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 text-[0.66rem] font-bold text-emerald-800 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Online E-Ticketing Active
-                  </span>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleDetectDeviceLocation}
+                  className="px-2.5 py-1 rounded bg-surface-container hover:bg-surface-container-high text-xs font-semibold text-primary flex items-center gap-1 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-sm">my_location</span>
+                  <span>Detect Location</span>
+                </button>
               </div>
 
-              <div className="space-y-6">
-                {/* Visiting Hours Grid */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[0.7rem] font-bold text-on-surface uppercase tracking-wider block">
-                      Schedule &amp; Visiting Hours Grid
-                    </span>
-                    <span className="text-[0.66rem] text-secondary">
-                      Official ASI &amp; State Archaeology Timetable
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="space-y-1.5">
-                      <label className="block text-[0.68rem] font-semibold text-secondary uppercase">
-                        General Opening Time
-                      </label>
-                      <div className="relative flex items-center">
-                        <span className="material-symbols-outlined text-secondary text-sm absolute left-2.5 pointer-events-none">
-                          schedule
-                        </span>
-                        <input
-                          type="text"
-                          value={openingTime}
-                          onChange={(e) => setOpeningTime(e.target.value)}
-                          className="w-full bg-[#fbf9f5] rounded-lg pl-8 pr-2.5 py-2 text-xs text-on-surface border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none transition-all font-medium"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="block text-[0.68rem] font-semibold text-secondary uppercase">
-                        General Closing Time
-                      </label>
-                      <div className="relative flex items-center">
-                        <span className="material-symbols-outlined text-secondary text-sm absolute left-2.5 pointer-events-none">
-                          alarm_off
-                        </span>
-                        <input
-                          type="text"
-                          value={closingTime}
-                          onChange={(e) => setClosingTime(e.target.value)}
-                          className="w-full bg-[#fbf9f5] rounded-lg pl-8 pr-2.5 py-2 text-xs text-on-surface border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none transition-all font-medium"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="block text-[0.68rem] font-semibold text-secondary uppercase">
-                        Last Entry / Cutoff Time
-                      </label>
-                      <div className="relative flex items-center">
-                        <span className="material-symbols-outlined text-primary text-sm absolute left-2.5 pointer-events-none">
-                          timer
-                        </span>
-                        <input
-                          type="text"
-                          value={cutoffTime}
-                          onChange={(e) => setCutoffTime(e.target.value)}
-                          className="w-full bg-[#fbf9f5] rounded-lg pl-8 pr-2.5 py-2 text-xs text-primary font-bold border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none transition-all"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Days Open */}
-                  <div className="pt-1">
-                    <DaySelector
-                      selectedDays={selectedDays}
-                      onChange={setSelectedDays}
-                      label="Days Open & Operating Schedule"
-                    />
-                  </div>
-
-                  {/* Night Viewing Slot */}
-                  <div className="p-3.5 bg-surface-container-low rounded-lg border border-outline-variant/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-primary shrink-0">
-                        <span className="material-symbols-outlined text-lg">nightlight</span>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-on-surface">
-                          Night Viewing Slot (07:00 PM – 10:00 PM)
-                        </p>
-                        <p className="text-[0.66rem] text-secondary">
-                          Enable architectural night illumination &amp; rooftop twilight walk session
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="relative flex items-center">
-                        <span className="material-symbols-outlined text-secondary text-xs absolute left-2 pointer-events-none">
-                          schedule
-                        </span>
-                        <input
-                          type="text"
-                          value={nightSlotTime}
-                          onChange={(e) => setNightSlotTime(e.target.value)}
-                          className="bg-[#fbf9f5] rounded-md pl-6 pr-2.5 py-1 text-[0.72rem] text-on-surface border border-outline-variant/60 font-medium w-40"
-                        />
-                      </div>
-                      <span
-                        onClick={() => setNightSlotActive(!nightSlotActive)}
-                        className={`px-2.5 py-0.5 rounded text-[0.65rem] font-bold cursor-pointer transition-colors border ${
-                          nightSlotActive
-                            ? 'bg-amber-100 text-amber-900 border-amber-200'
-                            : 'bg-stone-200 text-stone-600 border-stone-300'
-                        }`}
-                      >
-                        {nightSlotActive ? 'Active +₹100' : 'Inactive'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Entry Tariff Slabs */}
-                <div className="space-y-3 pt-3 border-t border-surface-container">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[0.7rem] font-bold text-on-surface uppercase tracking-wider block">
-                      Entry Tariff &amp; Fee Slabs (in INR ₹)
-                    </span>
-                    <span className="text-[0.66rem] text-secondary">
-                      Statutory fee structure prescribed under AMASR Act
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <TariffInput
-                      label="Domestic Citizens"
-                      icon="person"
-                      value={domesticFee}
-                      onChange={setDomesticFee}
-                      subtitle="Valid Govt Photo ID required"
-                    />
-                    <TariffInput
-                      label="SAARC / BIMSTEC"
-                      icon="public"
-                      value={saarcFee}
-                      onChange={setSaarcFee}
-                      subtitle="Regional treaty passport holders"
-                    />
-                    <TariffInput
-                      label="Foreign Tourists"
-                      icon="flight"
-                      value={foreignFee}
-                      onChange={setForeignFee}
-                      subtitle="International tourist visitors"
-                    />
-                    <TariffInput
-                      label="Student Concession"
-                      icon="school"
-                      value={studentFee}
-                      onChange={setStudentFee}
-                      subtitle="Valid Institutional Student ID"
-                    />
-                  </div>
-
-                  {/* Free Entry Statutory Badges */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <div className="p-3 rounded-lg border border-outline-variant/40 bg-surface-container-low flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-800 shrink-0">
-                          <span className="material-symbols-outlined text-sm">child_care</span>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-on-surface">
-                            Children Under 15 Years
-                          </p>
-                          <p className="text-[0.65rem] text-secondary">
-                            Free statutory entry under national heritage norms
-                          </p>
-                        </div>
-                      </div>
-                      <span className="px-2.5 py-0.5 rounded text-[0.66rem] font-bold bg-emerald-500/10 text-emerald-800 border border-emerald-500/20">
-                        100% Free Entry
-                      </span>
-                    </div>
-
-                    <div className="p-3 rounded-lg border border-outline-variant/40 bg-surface-container-low flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-800 shrink-0">
-                          <span className="material-symbols-outlined text-sm">accessible</span>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-on-surface">
-                            Divyangjan (Differently Abled)
-                          </p>
-                          <p className="text-[0.65rem] text-secondary">
-                            Free statutory access + 1 verified escort allowed
-                          </p>
-                        </div>
-                      </div>
-                      <span className="px-2.5 py-0.5 rounded text-[0.66rem] font-bold bg-emerald-500/10 text-emerald-800 border border-emerald-500/20">
-                        Free + 1 Escort
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Camera & Video Permits */}
-                  <div className="space-y-2 pt-2 border-t border-surface-container">
-                    <span className="text-[0.68rem] font-semibold text-secondary uppercase block">
-                      Photography &amp; Commercial Permits
-                    </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <TariffInput
-                        label="Still Camera Permit"
-                        icon="photo_camera"
-                        value={stillCameraFee}
-                        onChange={setStillCameraFee}
-                        subtitle="DSLR / Mirrorless Non-commercial photography"
-                        layout="horizontal"
-                      />
-                      <TariffInput
-                        label="Video / Drone Permit"
-                        icon="videocam"
-                        value={videoFee}
-                        onChange={setVideoFee}
-                        subtitle="Video recording & clearance permit"
-                        layout="horizontal"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Form Section 3: Physical & Architectural Overview */}
-            <section className={`bg-surface-container-lowest rounded-xl border border-outline-variant/60 p-6 shadow-sm space-y-5 transition-all ${
-              !locationCoordinatesEnabled ? 'opacity-75' : ''
-            }`}>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-surface-container gap-2">
-                <div className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-primary text-xl">my_location</span>
-                  <div>
-                    <h2 className="font-display text-base lg:text-lg font-bold text-on-surface">
-                      3. Location Coordinates &amp; Direction Link
-                    </h2>
-                    <p className="text-[0.68rem] text-secondary">
-                      Geographical positioning for automated spatial mapping and visitor routing.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  <ToggleSwitch
-                    checked={locationCoordinatesEnabled}
-                    onChange={setLocationCoordinatesEnabled}
-                    statusLabels={{ active: 'Enabled', inactive: 'Disabled' }}
-                    color="amber"
-                    size="sm"
-                  />
-                  <span className="text-[0.66rem] font-semibold text-emerald-800 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    Verified Survey Marker
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-[0.7rem] font-bold text-on-surface uppercase tracking-wider">
-                      Latitude (GPS Coordinate) <span className="text-primary">*</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleDetectDeviceLocation}
-                      className="text-[0.65rem] text-primary hover:underline flex items-center gap-0.5 font-semibold"
-                      title="Use device GPS location"
-                    >
-                      <span className="material-symbols-outlined text-[13px]">my_location</span>
-                      <span>Use GPS</span>
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <span className="material-symbols-outlined text-secondary text-sm absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                      explore
-                    </span>
-                    <input
-                      className="w-full bg-[#fbf9f5] rounded-lg pl-8 pr-3 py-2.5 text-xs text-on-surface border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder:text-secondary/60 font-mono font-medium"
-                      placeholder="26.9374"
-                      type="text"
-                      value={latitude}
-                      onChange={(e) => handleLatitudeChange(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-[0.7rem] font-bold text-on-surface uppercase tracking-wider">
-                      Longitude (GPS Coordinate) <span className="text-primary">*</span>
-                    </label>
-                  </div>
-                  <div className="relative">
-                    <span className="material-symbols-outlined text-secondary text-sm absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                      explore
-                    </span>
-                    <input
-                      className="w-full bg-[#fbf9f5] rounded-lg pl-8 pr-3 py-2.5 text-xs text-on-surface border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder:text-secondary/60 font-mono font-medium"
-                      placeholder="75.8155"
-                      type="text"
-                      value={longitude}
-                      onChange={(e) => handleLongitudeChange(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[0.7rem] font-bold text-on-surface uppercase tracking-wider">
-                    Google Maps / Navigation URL
+                  <label htmlFor="record-latitude" className="block text-xs font-semibold text-on-surface">
+                    Latitude (-90 to 90)
                   </label>
-                  <div className="relative flex items-center">
-                    <input
-                      className="w-full bg-[#fbf9f5] rounded-lg pl-3 pr-20 py-2.5 text-xs text-on-surface border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none transition-all placeholder:text-secondary/60 truncate"
-                      placeholder="https://maps.google.com/?q=..."
-                      type="url"
-                      value={mapsUrl}
-                      onChange={(e) => setMapsUrl(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => window.open(mapsUrl, '_blank')}
-                      className="absolute right-1.5 px-2.5 py-1 text-[0.68rem] font-bold bg-primary text-white rounded hover:bg-primary-container transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-xs">map</span>
-                      <span>Locate</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/40 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 text-secondary">
-                    <span className="material-symbols-outlined text-primary text-base">pin_drop</span>
-                    <span>
-                      Jurisdiction:{' '}
-                      <strong className="text-on-surface">
-                        {selectedDistrict} Circle, {selectedState}
-                      </strong>
-                    </span>
-                  </div>
-                  <span className="text-[0.68rem] text-secondary font-mono">Grid #ASI-RJ-048</span>
+                  <input
+                    id="record-latitude"
+                    type="number"
+                    step="any"
+                    value={latitude}
+                    onChange={(e) => setLatitude(e.target.value)}
+                    placeholder="e.g., 22.7196"
+                    className="w-full px-3 py-2 bg-surface-container-low border border-surface-container rounded-lg text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
                 </div>
 
-                <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/40 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 text-secondary">
-                    <span className="material-symbols-outlined text-secondary text-base">near_me</span>
-                    <span className="truncate">
-                      Closest Transit:{' '}
-                      <strong className="text-on-surface">Chandpole Metro (6.2 km) / NH-52</strong>
-                    </span>
-                  </div>
-                  <span className="material-symbols-outlined text-secondary text-xs">
-                    arrow_outward
-                  </span>
+                <div className="space-y-1.5">
+                  <label htmlFor="record-longitude" className="block text-xs font-semibold text-on-surface">
+                    Longitude (-180 to 180)
+                  </label>
+                  <input
+                    id="record-longitude"
+                    type="number"
+                    step="any"
+                    value={longitude}
+                    onChange={(e) => setLongitude(e.target.value)}
+                    placeholder="e.g., 75.8577"
+                    className="w-full px-3 py-2 bg-surface-container-low border border-surface-container rounded-lg text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
                 </div>
               </div>
-            </section>
-
-            {/* Bottom Controls - Step 1 */}
-            <footer className="p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-              <button
-                id="cancel-step-1-btn"
-                type="button"
-                onClick={onCancel}
-                className="w-full sm:w-auto px-4 py-2 text-xs font-semibold text-secondary hover:text-on-surface hover:bg-surface-container rounded-lg transition-colors"
-              >
-                Cancel Entry
-              </button>
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                <button
-                  type="button"
-                  onClick={handleSaveDraft}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-semibold border border-outline-variant/40 transition-colors shadow-2xs"
-                >
-                  <span className="material-symbols-outlined text-base text-secondary">
-                    bookmark_border
-                  </span>
-                  <span>Save Draft</span>
-                </button>
-                <button
-                  id="next-to-step-2-btn"
-                  type="button"
-                  onClick={() => setCurrentStep(2)}
-                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-primary hover:bg-primary-container text-white text-xs font-semibold shadow-sm transition-all"
-                >
-                  <span>Next: Visuals</span>
-                  <span className="material-symbols-outlined text-base">arrow_forward</span>
-                </button>
-              </div>
-            </footer>
+            </div>
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* STEP 2: VISUALS & MEDIA                                                  */}
-        {/* ========================================================================= */}
+        {/* STEP 2: Visuals & Media */}
         {currentStep === 2 && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 p-6 shadow-sm space-y-6">
-              {/* Section Header */}
-              <div className="flex items-center justify-between pb-4 border-b border-surface-container">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-red-600/10 text-red-600 flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-lg">play_circle</span>
-                  </div>
-                  <div>
-                    <h3 className="font-display text-base font-bold text-on-surface">
-                      YouTube Videos &amp; Streams
-                    </h3>
-                    <p className="text-[0.68rem] text-secondary">
-                      Add and manage monument walkthroughs, drone footage, and documentary links.
-                    </p>
-                  </div>
+          <div className="space-y-6">
+            <div className="p-5 rounded-xl bg-surface-container-lowest border border-surface-container shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-surface-container pb-3">
+                <div>
+                  <h2 className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                    Visuals &amp; Media Module Toggle
+                  </h2>
+                  <p className="text-[0.68rem] text-secondary">
+                    Control public visibility of gallery and videos for this record.
+                  </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[0.68rem] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    {localVideos.length} Videos Configured
-                  </span>
-                </div>
+                <ToggleSwitch
+                  enabled={visualsMediaEnabled}
+                  onChange={setVisualsMediaEnabled}
+                  label={visualsMediaEnabled ? 'Enabled' : 'Disabled'}
+                />
               </div>
 
-              {/* Add Video Form Row */}
-              <form
-                onSubmit={handleAddVideoSubmit}
-                className="bg-surface-container-low/60 rounded-xl p-4 border border-outline-variant/40 space-y-3"
-              >
-                <div className="text-[0.7rem] font-bold text-on-surface uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-sm text-primary">add_link</span>
-                  Add New Video Entry
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                  <div className="md:col-span-5 space-y-1">
-                    <label className="block text-[0.65rem] font-semibold text-secondary uppercase tracking-wider">
-                      Title of Video <span className="text-primary">*</span>
-                    </label>
-                    <input
-                      id="new-video-title-input"
-                      type="text"
-                      value={newVideoTitle}
-                      onChange={(e) => setNewVideoTitle(e.target.value)}
-                      placeholder="e.g. Nahargarh Fort 4K Drone Tour"
-                      className="w-full bg-surface-container-lowest rounded-lg px-3 py-2 text-xs text-on-surface border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none placeholder:text-secondary/50 font-medium transition-all"
-                    />
-                  </div>
-                  <div className="md:col-span-5 space-y-1">
-                    <label className="block text-[0.65rem] font-semibold text-secondary uppercase tracking-wider">
-                      Link of YouTube Video <span className="text-primary">*</span>
-                    </label>
-                    <input
-                      id="new-video-url-input"
-                      type="url"
-                      value={newVideoUrl}
-                      onChange={(e) => setNewVideoUrl(e.target.value)}
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      className="w-full bg-surface-container-lowest rounded-lg px-3 py-2 text-xs text-on-surface border border-outline-variant/60 focus:ring-1 focus:ring-primary focus:border-primary focus:outline-none placeholder:text-secondary/50 font-mono tracking-tight transition-all"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <button
-                      id="add-video-btn"
-                      type="submit"
-                      className="w-full inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-primary hover:bg-primary-container text-white text-xs font-semibold rounded-lg shadow-sm transition-all h-[34px]"
+              {/* Add New Media Form */}
+              <div className="p-4 rounded-xl bg-surface-container-low/60 border border-surface-container space-y-3">
+                <span className="text-xs font-bold text-on-surface uppercase tracking-wider block">
+                  Add Photo or Video
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <label className="block text-[0.7rem] font-medium text-secondary">Type</label>
+                    <select
+                      value={newMediaType}
+                      onChange={(e) => setNewMediaType(e.target.value as 'image' | 'video')}
+                      className="w-full px-2.5 py-1.5 bg-surface-container-lowest border border-surface-container rounded-lg text-xs text-on-surface"
                     >
-                      <span className="material-symbols-outlined text-sm">add</span>
-                      <span>Add Video</span>
-                    </button>
-                  </div>
-                </div>
-              </form>
-
-              {/* Feed of Added Videos in a Clean Table */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-on-surface text-[0.72rem] uppercase tracking-wider">
-                    Configured YouTube Records
-                  </span>
-                  <span className="text-[0.68rem] text-secondary">
-                    Order dictates display sequence on the citizen portal
-                  </span>
-                </div>
-                <div className="border border-outline-variant/60 rounded-xl overflow-hidden bg-surface-container-lowest">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-surface-container text-secondary text-[0.65rem] uppercase tracking-wider border-b border-outline-variant/40">
-                          <th className="py-2.5 px-3.5 font-bold w-24">Video</th>
-                          <th className="py-2.5 px-3 font-bold">Video Title</th>
-                          <th className="py-2.5 px-3 font-bold">YouTube URL</th>
-                          <th className="py-2.5 px-3 font-bold">Duration / Quality</th>
-                          <th className="py-2.5 px-3 font-bold">Status</th>
-                          <th className="py-2.5 px-3.5 font-bold text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-outline-variant/30 text-on-surface">
-                        {localVideos.map((vid) => (
-                          <tr
-                            key={vid.id}
-                            className="hover:bg-surface-container-low/50 transition-colors group"
-                          >
-                            <td className="py-2.5 px-3.5">
-                              <div
-                                onClick={() => onPreviewVideo(vid)}
-                                className="w-20 h-11 rounded-md overflow-hidden relative border border-outline-variant/40 bg-black/10 shrink-0 cursor-pointer group-hover:ring-1 group-hover:ring-primary"
-                              >
-                                <img
-                                  src={vid.thumbnail}
-                                  alt={vid.title}
-                                  className="w-full h-full object-cover"
-                                />
-                                <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
-                                  <span className="material-symbols-outlined text-white text-sm drop-shadow">
-                                    play_circle
-                                  </span>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3">
-                              <div
-                                onClick={() => onPreviewVideo(vid)}
-                                className="font-semibold text-on-surface text-[0.75rem] hover:text-primary cursor-pointer"
-                              >
-                                {vid.title}
-                              </div>
-                              <div className="text-[0.65rem] text-secondary">{vid.subtitle}</div>
-                            </td>
-                            <td className="py-2.5 px-3 font-mono text-[0.68rem] text-primary truncate max-w-[180px]">
-                              <a
-                                href={vid.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="hover:underline flex items-center gap-1"
-                              >
-                                <span className="truncate">{vid.url}</span>
-                                <span className="material-symbols-outlined text-xs shrink-0">
-                                  open_in_new
-                                </span>
-                              </a>
-                            </td>
-                            <td className="py-2.5 px-3">
-                              <div className="inline-flex items-center gap-1.5">
-                                <span className="text-[0.65rem] font-mono font-medium text-secondary">
-                                  {vid.duration}
-                                </span>
-                                <span
-                                  className={`px-1.5 py-0.5 rounded text-[0.6rem] font-bold border ${
-                                    vid.quality === '4K UHD'
-                                      ? 'bg-amber-500/10 text-amber-800 border-amber-500/30'
-                                      : 'bg-surface-container text-secondary border-outline-variant/50'
-                                  }`}
-                                >
-                                  {vid.quality}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.62rem] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                {vid.status}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3.5 text-right">
-                              <div className="inline-flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => onPreviewVideo(vid)}
-                                  className="p-1 text-secondary hover:text-primary hover:bg-surface-container rounded transition-colors"
-                                  title="Preview Video"
-                                >
-                                  <span className="material-symbols-outlined text-base">
-                                    visibility
-                                  </span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteVideoItem(vid.id)}
-                                  className="p-1 text-secondary hover:text-red-600 hover:bg-red-600/10 rounded transition-colors"
-                                  title="Remove Video"
-                                >
-                                  <span className="material-symbols-outlined text-base">
-                                    delete
-                                  </span>
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Bottom Controls - Step 2 */}
-            <footer className="p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-              <button
-                type="button"
-                onClick={() => setCurrentStep(1)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-secondary hover:text-on-surface bg-surface-container hover:bg-surface-container-high rounded-lg border border-outline-variant/40 transition-colors"
-              >
-                <span className="material-symbols-outlined text-base">arrow_back</span>
-                <span>← Previous: Basic Info</span>
-              </button>
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                <button
-                  type="button"
-                  onClick={handleSaveDraft}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-semibold border border-outline-variant/40 transition-colors shadow-2xs"
-                >
-                  <span className="material-symbols-outlined text-base text-secondary">
-                    bookmark_border
-                  </span>
-                  <span>Save Draft</span>
-                </button>
-                <button
-                  id="proceed-to-step-3-btn"
-                  type="button"
-                  onClick={() => setCurrentStep(3)}
-                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-primary hover:bg-primary-container text-white text-xs font-semibold shadow-sm transition-all"
-                >
-                  <span>Proceed to Step 3: Documentation →</span>
-                </button>
-              </div>
-            </footer>
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* STEP 3: BOOK & DOCUMENTATION                                             */}
-        {/* ========================================================================= */}
-        {currentStep === 3 && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            <section className="bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-sm overflow-hidden">
-              {/* Section Header */}
-              <div className="p-5 sm:p-6 border-b border-surface-container flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-surface-bright/50">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-primary shadow-xs shrink-0">
-                    <span className="material-symbols-outlined text-2xl">menu_book</span>
-                  </div>
-                  <div>
-                    <h2 className="font-display text-lg font-bold text-on-surface tracking-tight flex items-center gap-2">
-                      PDF Books &amp; Archival Documentation
-                    </h2>
-                    <p className="text-xs text-secondary mt-0.5">
-                      Add and manage official heritage monographs, research PDFs, guidebooks, and
-                      gazetteer documents.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    {localPdfs.length} Documents Configured
-                  </span>
-                </div>
-              </div>
-
-              <div className="p-5 sm:p-6 space-y-6">
-                {/* Add New PDF Document Input Form */}
-                <form
-                  onSubmit={handleAddPdfSubmit}
-                  className="bg-surface-container-low rounded-lg border border-outline-variant/50 p-4 sm:p-5 space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[0.68rem] font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-primary">
-                        add_circle
-                      </span>
-                      ADD NEW PDF DOCUMENT
-                    </span>
-                    <span className="text-[0.68rem] text-secondary">
-                      Direct PDF download / HTTPS storage URL
-                    </span>
+                      <option value="image">Image / Photo</option>
+                      <option value="video">Video (YouTube URL)</option>
+                    </select>
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
-                    <div className="lg:col-span-5 space-y-1">
-                      <label className="block text-[0.68rem] font-semibold text-on-surface uppercase tracking-wider">
-                        PDF NAME *
-                      </label>
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="block text-[0.7rem] font-medium text-secondary">URL</label>
+                    <input
+                      type="url"
+                      value={newMediaUrl}
+                      onChange={(e) => setNewMediaUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddMedia();
+                        }
+                      }}
+                      placeholder={newMediaType === 'image' ? 'https://images.unsplash...' : 'https://www.youtube.com/watch?v=...'}
+                      className="w-full px-2.5 py-1.5 bg-surface-container-lowest border border-surface-container rounded-lg text-xs text-on-surface"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[0.7rem] font-medium text-secondary">Title / Caption</label>
+                    <div className="flex gap-1.5">
                       <input
-                        id="new-pdf-name-input"
                         type="text"
-                        value={newPdfName}
-                        onChange={(e) => setNewPdfName(e.target.value)}
-                        placeholder="e.g. Nahargarh Fort - Historical Survey & Monograph (ASI 1982)"
-                        className="w-full bg-surface-container-lowest text-xs rounded-lg border border-outline-variant/60 px-3 py-2 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                        value={newMediaTitle}
+                        onChange={(e) => setNewMediaTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddMedia();
+                          }
+                        }}
+                        placeholder="Front Facade..."
+                        className="w-full px-2.5 py-1.5 bg-surface-container-lowest border border-surface-container rounded-lg text-xs text-on-surface"
                       />
-                    </div>
-                    <div className="lg:col-span-5 space-y-1">
-                      <label className="block text-[0.68rem] font-semibold text-on-surface uppercase tracking-wider">
-                        SUBMIT LINK / PDF URL *
-                      </label>
-                      <input
-                        id="new-pdf-url-input"
-                        type="url"
-                        value={newPdfUrl}
-                        onChange={(e) => setNewPdfUrl(e.target.value)}
-                        placeholder="https://archival-library.gov.in/docs/nahargarh-monograph-vol1.pdf"
-                        className="w-full bg-surface-container-lowest text-xs rounded-lg border border-outline-variant/60 px-3 py-2 text-on-surface focus:outline-none focus:border-primary transition-colors font-mono text-[0.7rem]"
-                      />
-                    </div>
-                    <div className="lg:col-span-2">
                       <button
-                        id="submit-pdf-btn"
-                        type="submit"
-                        className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-container text-white text-xs font-semibold rounded-lg shadow-sm transition-all h-[34px]"
+                        type="button"
+                        onClick={handleAddMedia}
+                        className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold shrink-0"
                       >
-                        <span className="material-symbols-outlined text-base">add</span>
-                        <span>Submit Document</span>
+                        Add
                       </button>
                     </div>
                   </div>
-                </form>
+                </div>
+              </div>
 
-                {/* Configured PDF Documents Table */}
-                <div className="space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-1">
-                    <h3 className="text-xs font-bold text-on-surface uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-secondary">
-                        folder_special
-                      </span>
-                      CONFIGURED PDF DOCUMENTS
-                    </h3>
-                    <span className="text-[0.68rem] text-secondary">
-                      Order dictates display sequence on citizen portal
-                    </span>
+              {/* Media List */}
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-secondary">
+                  Uploaded Media Items ({mediaList.length})
+                </span>
+
+                {mediaList.length === 0 ? (
+                  <p className="text-xs text-outline py-4 text-center">No media attached to this record yet.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {mediaList.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-lg bg-surface-container-low border border-surface-container flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="material-symbols-outlined text-primary text-base">
+                            {item.type === 'video' ? 'videocam' : 'image'}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-on-surface truncate">{item.title || item.alt || 'Media'}</p>
+                            <p className="text-[0.65rem] text-secondary truncate">{item.url}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {item.type === 'image' && (
+                            <button
+                              type="button"
+                              onClick={() => onPreviewImage(item.url, item.title || 'Preview')}
+                              className="p-1 rounded text-secondary hover:text-on-surface"
+                            >
+                              <span className="material-symbols-outlined text-sm">visibility</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMedia(idx)}
+                            className="p-1 rounded text-red-500 hover:text-red-700"
+                          >
+                            <span className="material-symbols-outlined text-sm">delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: Books & Documents */}
+        {currentStep === 3 && (
+          <div className="space-y-6">
+            <div className="p-5 rounded-xl bg-surface-container-lowest border border-surface-container shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-surface-container pb-3">
+                <div>
+                  <h2 className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                    Book &amp; Detailed Resource Module Toggle
+                  </h2>
+                  <p className="text-[0.68rem] text-secondary">
+                    Control public display of archival monographs and research PDFs.
+                  </p>
+                </div>
+                <ToggleSwitch
+                  enabled={bookEnabled}
+                  onChange={setBookEnabled}
+                  label={bookEnabled ? 'Enabled' : 'Disabled'}
+                />
+              </div>
+
+              {/* Add New Document Form */}
+              <div className="p-4 rounded-xl bg-surface-container-low/60 border border-surface-container space-y-3">
+                <span className="text-xs font-bold text-on-surface uppercase tracking-wider block">
+                  Add Monograph / PDF Resource
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="block text-[0.7rem] font-medium text-secondary">Document Title</label>
+                    <input
+                      type="text"
+                      value={newDocTitle}
+                      onChange={(e) => setNewDocTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddDocument();
+                        }
+                      }}
+                      placeholder="Archaeological Monograph Vol. 1"
+                      className="w-full px-2.5 py-1.5 bg-surface-container-lowest border border-surface-container rounded-lg text-xs text-on-surface"
+                    />
                   </div>
 
-                  <div className="overflow-x-auto rounded-lg border border-outline-variant/40">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead className="bg-surface-container text-on-surface-variant text-[0.68rem] uppercase tracking-wider font-semibold border-b border-outline-variant/40">
-                        <tr>
-                          <th className="py-2.5 px-3.5 w-12 text-center">DOC</th>
-                          <th className="py-2.5 px-3.5">PDF NAME</th>
-                          <th className="py-2.5 px-3.5">DOCUMENT LINK / URL</th>
-                          <th className="py-2.5 px-3.5">FILE SIZE / PAGES</th>
-                          <th className="py-2.5 px-3.5 text-center">STATUS</th>
-                          <th className="py-2.5 px-3.5 text-right">ACTIONS</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-outline-variant/30 bg-surface-container-lowest">
-                        {localPdfs.map((doc) => (
-                          <tr
-                            key={doc.id}
-                            className="hover:bg-surface-bright/80 transition-colors group"
-                          >
-                            <td className="py-3 px-3.5 text-center">
-                              <div
-                                onClick={() => onPreviewPdf(doc)}
-                                className="w-8 h-8 rounded bg-red-50 text-tertiary border border-red-200/80 flex items-center justify-center mx-auto shadow-2xs cursor-pointer group-hover:scale-105 transition-transform"
-                              >
-                                <span className="material-symbols-outlined text-base">
-                                  picture_as_pdf
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-3.5">
-                              <div
-                                onClick={() => onPreviewPdf(doc)}
-                                className="font-semibold text-on-surface hover:text-primary cursor-pointer"
-                              >
-                                {doc.title}
-                              </div>
-                              <div className="text-[0.68rem] text-secondary mt-0.5">
-                                {doc.subtitle}
-                              </div>
-                            </td>
-                            <td className="py-3 px-3.5">
-                              <a
-                                href={doc.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 font-mono text-[0.7rem] text-primary hover:underline"
-                              >
-                                <span className="truncate max-w-xs">{doc.url}</span>
-                                <span className="material-symbols-outlined text-[13px]">
-                                  open_in_new
-                                </span>
-                              </a>
-                            </td>
-                            <td className="py-3 px-3.5">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-on-surface">{doc.fileSize}</span>
-                                <span className="text-[0.62rem] bg-surface-container text-secondary px-1.5 py-0.5 rounded font-medium">
-                                  {doc.pages}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-3.5 text-center">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.65rem] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                {doc.status}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3.5 text-right">
-                              <div className="inline-flex items-center gap-1 justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() => onPreviewPdf(doc)}
-                                  className="p-1.5 text-secondary hover:text-primary rounded hover:bg-surface-container transition-colors"
-                                  title="Preview Document"
-                                >
-                                  <span className="material-symbols-outlined text-base">
-                                    visibility
-                                  </span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeletePdfItem(doc.id)}
-                                  className="p-1.5 text-secondary hover:text-error rounded hover:bg-red-50 transition-colors"
-                                  title="Delete Document"
-                                >
-                                  <span className="material-symbols-outlined text-base">
-                                    delete
-                                  </span>
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="space-y-1">
+                    <label className="block text-[0.7rem] font-medium text-secondary">PDF File URL</label>
+                    <input
+                      type="url"
+                      value={newDocUrl}
+                      onChange={(e) => setNewDocUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddDocument();
+                        }
+                      }}
+                      placeholder="https://.../monograph.pdf"
+                      className="w-full px-2.5 py-1.5 bg-surface-container-lowest border border-surface-container rounded-lg text-xs text-on-surface"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[0.7rem] font-medium text-secondary">Publisher / Author</label>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={newDocPublisher}
+                        onChange={(e) => setNewDocPublisher(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddDocument();
+                          }
+                        }}
+                        placeholder="State Archives..."
+                        className="w-full px-2.5 py-1.5 bg-surface-container-lowest border border-surface-container rounded-lg text-xs text-on-surface"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddDocument}
+                        className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold shrink-0"
+                      >
+                        Add
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </section>
 
-            {/* Bottom Controls - Step 3 */}
-            <footer className="p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/60 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-              <button
-                type="button"
-                onClick={() => setCurrentStep(2)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-secondary hover:text-on-surface bg-surface-container hover:bg-surface-container-high rounded-lg border border-outline-variant/40 transition-colors"
-              >
-                <span className="material-symbols-outlined text-base">arrow_back</span>
-                <span>Previous: Visuals &amp; Media</span>
-              </button>
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-end flex-wrap">
-                <button
-                  type="button"
-                  onClick={handleSaveDraft}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface text-xs font-semibold border border-outline-variant/40 transition-colors shadow-2xs"
-                >
-                  <span className="material-symbols-outlined text-base text-secondary">
-                    bookmark_border
-                  </span>
-                  <span>Save Draft</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSubmitForReview}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 text-xs font-semibold border border-amber-300 transition-colors shadow-sm"
-                >
-                  <span className="material-symbols-outlined text-base text-amber-800">rate_review</span>
-                  <span>Submit for Verification</span>
-                </button>
-                <button
-                  id="final-publish-btn"
-                  type="button"
-                  onClick={handleFinalPublish}
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-primary hover:bg-primary-container text-white text-xs font-semibold shadow-sm transition-all"
-                >
-                  <span className="material-symbols-outlined text-base">verified</span>
-                  <span>Submit &amp; Publish to National Registry</span>
-                </button>
+              {/* Document List */}
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-secondary">
+                  Attached Documents ({documentList.length})
+                </span>
+
+                {documentList.length === 0 ? (
+                  <p className="text-xs text-outline py-4 text-center">No documents attached.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {documentList.map((doc, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-lg bg-surface-container-low border border-surface-container flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="material-symbols-outlined text-primary text-base">picture_as_pdf</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-on-surface truncate">{doc.title}</p>
+                            <p className="text-[0.65rem] text-secondary truncate">
+                              {doc.publisher ? `${doc.publisher} • ` : ''}
+                              {doc.url}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDocument(idx)}
+                          className="p-1 rounded text-red-500 hover:text-red-700"
+                        >
+                          <span className="material-symbols-outlined text-sm">delete</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </footer>
+            </div>
           </div>
         )}
-      </div>
+
+        {/* STEP 4: Sources & Citations */}
+        {currentStep === 4 && (
+          <div className="space-y-6">
+            <div className="p-5 rounded-xl bg-surface-container-lowest border border-surface-container shadow-xs space-y-4">
+              <div className="border-b border-surface-container pb-2">
+                <h2 className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                  Archival Sources &amp; Scholarly References
+                </h2>
+                <p className="text-[0.68rem] text-secondary">
+                  Add verified sources, publications, gazetteers, and academic attribution.
+                </p>
+              </div>
+
+              {/* Add Source Form */}
+              <div className="p-4 rounded-xl bg-surface-container-low/60 border border-surface-container space-y-3">
+                <span className="text-xs font-bold text-on-surface uppercase tracking-wider block">
+                  Add Source
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="block text-[0.7rem] font-medium text-secondary">Source Title</label>
+                    <input
+                      type="text"
+                      value={newSourceTitle}
+                      onChange={(e) => setNewSourceTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddSource();
+                        }
+                      }}
+                      placeholder="Malwa Gazetteer 1908"
+                      className="w-full px-2.5 py-1.5 bg-surface-container-lowest border border-surface-container rounded-lg text-xs text-on-surface"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[0.7rem] font-medium text-secondary">Reference URL</label>
+                    <input
+                      type="url"
+                      value={newSourceUrl}
+                      onChange={(e) => setNewSourceUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddSource();
+                        }
+                      }}
+                      placeholder="https://archives..."
+                      className="w-full px-2.5 py-1.5 bg-surface-container-lowest border border-surface-container rounded-lg text-xs text-on-surface"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[0.7rem] font-medium text-secondary">Publisher / Organization</label>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={newSourcePublisher}
+                        onChange={(e) => setNewSourcePublisher(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddSource();
+                          }
+                        }}
+                        placeholder="State Archaeology Dept."
+                        className="w-full px-2.5 py-1.5 bg-surface-container-lowest border border-surface-container rounded-lg text-xs text-on-surface"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddSource}
+                        className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold shrink-0"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sources List */}
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-secondary">
+                  Attributed Sources ({sourceList.length})
+                </span>
+
+                {sourceList.length === 0 ? (
+                  <p className="text-xs text-outline py-4 text-center">No references added.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {sourceList.map((src, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-lg bg-surface-container-low border border-surface-container flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-on-surface truncate">{src.sourceTitle}</p>
+                          <p className="text-[0.65rem] text-secondary truncate">
+                            {src.publisher ? `${src.publisher} • ` : ''}
+                            {src.sourceUrl}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSource(idx)}
+                          className="p-1 rounded text-red-500 hover:text-red-700"
+                        >
+                          <span className="material-symbols-outlined text-sm">delete</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bottom Bar Actions */}
+        <div className="flex items-center justify-between pt-4 border-t border-surface-container">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg border border-surface-container hover:bg-surface-container text-xs font-semibold text-secondary transition-colors"
+          >
+            Cancel
+          </button>
+
+          <div className="flex items-center gap-2">
+            {currentStep > 1 && (
+              <button
+                type="button"
+                onClick={() => setCurrentStep((prev) => (prev - 1) as any)}
+                className="px-4 py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-xs font-semibold text-on-surface transition-colors"
+              >
+                Previous Step
+              </button>
+            )}
+
+            {currentStep < 4 ? (
+              <button
+                type="button"
+                onClick={() => setCurrentStep((prev) => (prev + 1) as any)}
+                className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-xs font-bold transition-colors"
+              >
+                Next Step →
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="px-6 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-xs font-bold shadow-sm transition-all"
+              >
+                {isEditing ? 'Update Record' : 'Save & Publish'}
+              </button>
+            )}
+          </div>
+        </div>
+      </form>
     </div>
   );
 };
-
-// Aliases for backwards compatibility
-export const AddRecordWizard = AddRecordPage;

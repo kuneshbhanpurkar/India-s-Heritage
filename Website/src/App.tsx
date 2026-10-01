@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HeritageSite, PageRoute, MediaItem, UserProfile } from './types';
-import { getContent, getDistricts, getStates, getUserProfile, toHeritageSite, updateUserProfile } from './api';
+import { getContent, getContentDetails, getDistricts, getStates, getUserProfile, toHeritageSite, updateUserProfile } from './api';
 import { type StateInfo, type DistrictInfo, getStateRegion } from './data/statesAndDistricts';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -73,8 +73,8 @@ export default function App() {
   const [mapCenterCoords, setMapCenterCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   // Active section view state
-  const [activeSectionSlug, setActiveSectionSlug] = useState<string>('popular-places');
-  const [activeSectionTitle, setActiveSectionTitle] = useState<string>('Popular Places');
+  const [activeSectionSlug, setActiveSectionSlug] = useState<string>('heritage-places');
+  const [activeSectionTitle, setActiveSectionTitle] = useState<string>('Heritage & Places');
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     try {
@@ -223,17 +223,53 @@ export default function App() {
         const full = await getContentDetails(site.id);
         if (full) {
           const raw = full as any;
+          // Extract dynamic tariffs
+          let tariffs = raw.visitorTariffs;
+          if (!tariffs || tariffs.length === 0) {
+            const fee = raw.fields?.entryFee;
+            if (fee && typeof fee === 'object') {
+              tariffs = [];
+              if (fee.domestic) tariffs.push({ category: 'Indian Citizens', price: `₹${fee.domestic}`, highlight: true });
+              if (fee.student) tariffs.push({ category: 'Students', price: `₹${fee.student}` });
+              if (fee.foreign) tariffs.push({ category: 'Foreign Visitors', price: `₹${fee.foreign}` });
+            } else if (typeof fee === 'string' && fee.trim()) {
+              tariffs = [{ category: 'General Entry', price: fee.startsWith('₹') ? fee : `₹${fee}`, highlight: true }];
+            }
+          }
+
+          // Map media array if available
+          const dbMediaItems = Array.isArray(raw.media) && raw.media.length > 0
+            ? raw.media.map((m: any, idx: number) => {
+                const isVid = m.type === 'video' || (m.url && (m.url.includes('youtu') || m.url.includes('vimeo') || m.url.endsWith('.mp4')));
+                return {
+                  id: `${site.id}-m${idx}`,
+                  title: m.title || raw.title || site.name,
+                  category: isVid ? 'Documentary Films' : m.type === 'audio' ? 'Sound & Light' : 'Archival Photography',
+                  badge: isVid ? 'Video Record' : m.type === 'audio' ? 'Audio Archive' : 'Official Archive',
+                  duration: '',
+                  image: isVid ? (raw.image || site.image || m.url) : (m.url || site.image || ''),
+                  videoUrl: isVid ? m.url : undefined,
+                  description: m.caption || m.alt || m.title || '',
+                  meta: m.source || 'Official Heritage Record',
+                };
+              })
+            : null;
+
+          const finalMediaItems = (Array.isArray(raw.mediaItems) && raw.mediaItems.length > 0)
+            ? raw.mediaItems
+            : (dbMediaItems || prev.mediaItems);
+
           setSelectedSite((prev) => ({
             ...prev,
-            ...full,
-            description: raw.fullDescription || full.description || raw.shortDescription || raw.fields?.description || prev.description,
-            subTitle: raw.subtitle || full.subTitle || raw.fields?.subTitle || prev.subTitle,
+            description: raw.fullDescription || raw.shortDescription || raw.fields?.description || prev.description,
+            subTitle: raw.subtitle || raw.fields?.subTitle || prev.subTitle,
             location: raw.districtName || raw.cityName || raw.location || prev.location,
-            builtYear: raw.builtYear || raw.fields?.builtYear || prev.builtYear,
-            dynasty: raw.dynasty || raw.fields?.dynasty || prev.dynasty,
+            builtYear: raw.fields?.era || raw.fields?.builtYear || raw.builtYear || prev.builtYear,
+            dynasty: raw.fields?.builtBy || raw.fields?.dynasty || raw.dynasty || prev.dynasty,
             category: raw.category || raw.fields?.category || prev.category,
-            openingHours: raw.openingHours || raw.fields?.openingHours || prev.openingHours,
-            visitorTariffs: raw.visitorTariffs || raw.fields?.visitorTariffs || prev.visitorTariffs,
+            openingHours: raw.fields?.timings || raw.fields?.openingHours || raw.openingHours || prev.openingHours,
+            visitorTariffs: (tariffs && tariffs.length > 0) ? tariffs : prev.visitorTariffs,
+            mediaItems: finalMediaItems,
           }));
         }
       }

@@ -1,12 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { AdminSummary } from '../api';
-import { ViewType, MetricItem, JurisdictionLedgerItem, HeritagePlace, FilterTabItem } from '../types';
+import { ViewType, MetricItem, JurisdictionLedgerItem, HeritagePlace } from '../types';
 import { MetricCard } from '../components/common/MetricCard';
-import { FilterTabs } from '../components/common/FilterTabs';
-import { PlaceTableRow } from '../components/common/PlaceTableRow';
-import { Pagination } from '../components/common/Pagination';
-import { CITY_SECTIONS, CitySectionConfig } from '../config/sections';
-import { MapPin, Plus, Layers, ArrowUpRight, CheckCircle2, XCircle } from 'lucide-react';
+import { CitySectionConfig } from '../config/sections';
+import { MapPin } from 'lucide-react';
 
 export interface DashboardPageProps {
   onNavigate: (view: ViewType, sectionSlug?: string) => void;
@@ -56,12 +53,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [showCityImage, setShowCityImage] = useState(false);
   const [draftCityImageUrl, setDraftCityImageUrl] = useState(cityBannerUrl);
   const [imageError, setImageError] = useState(false);
-
-  // Table State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'published' | 'draft' | 'review'>('all');
-  const [rowsPerPage, setRowsPerPage] = useState('10');
-  const [currentPage, setCurrentPage] = useState(1);
 
   React.useEffect(() => {
     setDraftCityImageUrl(cityBannerUrl);
@@ -166,71 +157,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       },
     ];
   }, [metrics, places, uniqueStatesCount, totalDistrictsCount, selectedDistrict, selectedState]);
-
-  // Tab counts for the table
-  const tabCounts = useMemo(() => {
-    const published = places.filter((p) => p.status === 'Published').length;
-    const draft = places.filter((p) => p.status.includes('Draft')).length;
-    const review = places.filter((p) => p.status === 'Verification Pending').length;
-    return {
-      all: places.length.toLocaleString(),
-      published: published.toLocaleString(),
-      draft: draft.toLocaleString(),
-      review: review.toLocaleString(),
-    };
-  }, [places]);
-
-  const filterTabs: FilterTabItem<'all' | 'published' | 'draft' | 'review'>[] = [
-    {
-      id: 'all',
-      label: 'All Records',
-      count: tabCounts.all,
-      badgeClass: 'bg-surface-container text-on-surface-variant',
-    },
-    {
-      id: 'published',
-      label: 'Published',
-      dotColor: 'bg-emerald-500',
-      count: tabCounts.published,
-      badgeClass: 'bg-emerald-50 text-emerald-800',
-    },
-    {
-      id: 'draft',
-      label: 'Draft',
-      dotColor: 'bg-amber-500',
-      count: tabCounts.draft,
-      badgeClass: 'bg-amber-50 text-amber-800',
-    },
-    {
-      id: 'review',
-      label: 'In Review',
-      dotColor: 'bg-tertiary',
-      count: tabCounts.review,
-      badgeClass: 'bg-red-50 text-tertiary',
-    },
-  ];
-
-  const filteredPlaces = places.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.section && p.section.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    if (!matchesSearch) return false;
-    if (activeTab === 'all') return true;
-    if (activeTab === 'published') return p.status === 'Published';
-    if (activeTab === 'draft') return p.status.includes('Draft');
-    if (activeTab === 'review') return p.status === 'Verification Pending';
-    return true;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filteredPlaces.length / parseInt(rowsPerPage, 10)));
-  const paginatedPlaces = filteredPlaces.slice(
-    (currentPage - 1) * parseInt(rowsPerPage, 10),
-    currentPage * parseInt(rowsPerPage, 10)
-  );
 
   const filteredLedger = liveLedger.filter((item) => {
     if (ledgerStateFilter !== 'ALL' && item.state !== ledgerStateFilter) {
@@ -369,115 +295,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           />
         ))}
       </section>
-
-      {/* Heritage Content Table for the Selected State + District */}
-      <div className="bg-surface-container-lowest rounded-2xl border border-surface-container shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-surface-container flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h3 className="font-display font-bold text-sm text-on-surface flex items-center gap-2">
-              <span>{selectedDistrict} Heritage Content Directory</span>
-              <span className="text-[0.62rem] font-bold px-2 py-0.5 rounded bg-surface-container text-secondary">
-                {places.length} Total Records
-              </span>
-            </h3>
-            <FilterTabs
-              tabs={filterTabs}
-              activeTab={activeTab}
-              onTabChange={(tab) => {
-                setActiveTab(tab);
-                setCurrentPage(1);
-              }}
-            />
-          </div>
-
-          {/* Search Input */}
-          <div className="relative min-w-[240px]">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-secondary text-sm">
-              search
-            </span>
-            <input
-              id="search-district-records-input"
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder={`Search in ${selectedDistrict}...`}
-              className="w-full bg-surface-container/50 border border-surface-container rounded-xl pl-9 pr-4 py-1.5 text-xs text-on-surface placeholder:text-secondary focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
-            />
-          </div>
-        </div>
-
-        {/* Records Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-surface-container bg-surface-container/30 text-[0.68rem] font-bold text-secondary uppercase tracking-wider">
-                <th className="py-3 px-4">Record &amp; Identity</th>
-                <th className="py-3 px-4">Category</th>
-                <th className="py-3 px-4">Location</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-container/40 text-xs">
-              {paginatedPlaces.length > 0 ? (
-                paginatedPlaces.map((place) => (
-                  <PlaceTableRow
-                    key={place.id}
-                    place={place}
-                    onEdit={onEditPlace || (() => {})}
-                    onView={onViewPlace || (() => {})}
-                    onDelete={onDeletePlace || (() => {})}
-                    onQuickPublish={onQuickPublishPlace || (() => {})}
-                  />
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="py-16 text-center text-secondary">
-                    <div className="max-w-md mx-auto space-y-3">
-                      <div className="w-12 h-12 rounded-full bg-surface-container text-primary flex items-center justify-center mx-auto">
-                        <Layers className="w-6 h-6" />
-                      </div>
-                      <h4 className="font-semibold text-on-surface text-sm">
-                        No Records Found in {selectedDistrict}
-                      </h4>
-                      <p className="text-xs text-secondary leading-relaxed">
-                        {searchQuery
-                          ? `No records matching "${searchQuery}" in ${selectedDistrict}.`
-                          : `There are currently no cataloged heritage records in ${selectedDistrict}, ${selectedState}.`}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={onNavigateAddRecord}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-xs hover:bg-primary-hover transition-colors"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add First Record in {selectedDistrict}</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination Controls */}
-        {filteredPlaces.length > 0 && (
-          <Pagination
-            currentPage={currentPage}
-            totalItems={filteredPlaces.length}
-            rowsPerPage={rowsPerPage}
-            onPageChange={setCurrentPage}
-            onRowsPerPageChange={(rows) => {
-              setRowsPerPage(rows);
-              setCurrentPage(1);
-            }}
-          />
-        )}
-      </div>
 
       {/* Jurisdictional Publication Ledger with Structured State & District Filters */}
       <div className="bg-surface-container-lowest rounded-xl p-5 border border-surface-container shadow-sm space-y-4">

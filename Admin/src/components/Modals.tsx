@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { VideoRecord, PdfDocument, HeritagePlace } from '../types';
+import { CATEGORY_DEFINITIONS } from '../config/categoryDefinitions';
 
 // ==========================================
 // 1. IMAGE PREVIEW MODAL
@@ -79,7 +80,7 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({ video, onC
             <span className="material-symbols-outlined text-red-600 text-lg">play_circle</span>
             <div>
               <h3 className="font-display font-bold text-sm text-on-surface">{video.title}</h3>
-              <span className="text-[0.68rem] text-secondary">{video.subtitle}</span>
+              {video.subtitle && <span className="text-[0.68rem] text-secondary">{video.subtitle}</span>}
             </div>
           </div>
           <button
@@ -91,20 +92,17 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({ video, onC
           </button>
         </div>
 
-        {/* Video Simulation Canvas */}
+        {/* Video Canvas */}
         <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden group">
           <img
-            src={video.thumbnail}
+            src={video.thumbnail || 'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=1200&q=80'}
             alt={video.title}
             className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-between p-6">
             <div className="flex justify-between items-center text-xs text-white">
               <span className="px-2 py-0.5 rounded bg-red-600 font-bold uppercase tracking-wider text-[0.65rem]">
-                YouTube 4K
-              </span>
-              <span className="font-mono text-xs bg-black/50 px-2 py-0.5 rounded">
-                {video.duration}
+                Video Stream
               </span>
             </div>
             <div className="flex items-center justify-center">
@@ -120,7 +118,7 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({ video, onC
             <div className="text-white text-xs space-y-1">
               <p className="font-bold text-sm drop-shadow">{video.title}</p>
               <p className="text-stone-300 text-[0.72rem] drop-shadow">
-                Official Dharohar Heritage Media Player • {video.quality} Stream
+                Our_Dharohar Heritage Audio-Visual Resource
               </p>
             </div>
           </div>
@@ -133,7 +131,7 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({ video, onC
             rel="noreferrer"
             className="text-primary hover:underline font-mono text-xs flex items-center gap-1"
           >
-            <span>Open in YouTube</span>
+            <span>Open Stream URL</span>
             <span className="material-symbols-outlined text-xs">open_in_new</span>
           </a>
           <button
@@ -170,7 +168,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({ pdf, onClose }
             </div>
             <div>
               <h3 className="font-display font-bold text-sm text-on-surface">{pdf.title}</h3>
-              <span className="text-[0.68rem] text-secondary">{pdf.subtitle}</span>
+              {pdf.subtitle && <span className="text-[0.68rem] text-secondary">{pdf.subtitle}</span>}
             </div>
           </div>
           <button
@@ -185,31 +183,27 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({ pdf, onClose }
         <div className="p-6 space-y-4">
           <div className="p-4 bg-surface-container-low rounded-xl border border-surface-container space-y-3">
             <div className="grid grid-cols-2 gap-3 text-xs">
+              {pdf.fileSize && (
+                <div>
+                  <span className="text-secondary block text-[0.68rem] uppercase font-bold">
+                    File Size
+                  </span>
+                  <span className="font-semibold text-on-surface text-sm">{pdf.fileSize}</span>
+                </div>
+              )}
+              {pdf.publisher && (
+                <div>
+                  <span className="text-secondary block text-[0.68rem] uppercase font-bold">
+                    Publisher / Source
+                  </span>
+                  <span className="font-semibold text-on-surface text-sm">{pdf.publisher}</span>
+                </div>
+              )}
               <div>
                 <span className="text-secondary block text-[0.68rem] uppercase font-bold">
-                  File Size
+                  Document Type
                 </span>
-                <span className="font-semibold text-on-surface text-sm">{pdf.fileSize}</span>
-              </div>
-              <div>
-                <span className="text-secondary block text-[0.68rem] uppercase font-bold">
-                  Pagination
-                </span>
-                <span className="font-semibold text-on-surface text-sm">{pdf.pages}</span>
-              </div>
-              <div>
-                <span className="text-secondary block text-[0.68rem] uppercase font-bold">
-                  Status
-                </span>
-                <span className="font-semibold text-emerald-700 text-xs">{pdf.status}</span>
-              </div>
-              <div>
-                <span className="text-secondary block text-[0.68rem] uppercase font-bold">
-                  Archival Format
-                </span>
-                <span className="font-semibold text-on-surface text-xs">
-                  ISO-19005-1 PDF/A
-                </span>
+                <span className="font-semibold text-on-surface text-xs">PDF Document</span>
               </div>
             </div>
           </div>
@@ -237,7 +231,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({ pdf, onClose }
             className="px-3.5 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-primary-container transition-colors"
           >
             <span className="material-symbols-outlined text-sm">download</span>
-            <span>Download PDF</span>
+            <span>Open Document</span>
           </button>
           <button
             type="button"
@@ -268,6 +262,12 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
 }) => {
   if (!place) return null;
 
+  const categoryDef = CATEGORY_DEFINITIONS[place.section] || Object.values(CATEGORY_DEFINITIONS).find(
+    (c) => c.title === place.category || c.slug === place.section
+  );
+
+  const fields = place.fields || {};
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
       <div className="bg-surface-container-lowest rounded-xl max-w-2xl w-full overflow-hidden border border-outline-variant shadow-2xl animate-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
@@ -281,7 +281,7 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent flex flex-col justify-between p-4">
             <div className="flex justify-between items-start">
               <span className="px-2.5 py-0.5 rounded-full text-[0.68rem] font-bold bg-primary text-white">
-                {place.category}
+                {categoryDef?.title || place.category}
               </span>
               <button
                 type="button"
@@ -295,7 +295,7 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
               <h2 className="font-display text-xl sm:text-2xl font-bold text-white tracking-tight">
                 {place.name}
               </h2>
-              <p className="text-stone-300 font-mono text-xs">{place.code}</p>
+              {place.code && <p className="text-stone-300 font-mono text-xs">{place.code}</p>}
             </div>
           </div>
         </div>
@@ -305,7 +305,7 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-surface-container-low rounded-lg border border-surface-container">
             <div>
               <span className="text-secondary block text-[0.65rem] uppercase font-bold">
-                City / Jurisdiction
+                District / Jurisdiction
               </span>
               <span className="font-semibold text-on-surface text-xs">{place.city || 'National'}</span>
             </div>
@@ -334,34 +334,61 @@ export const PlaceDetailsModal: React.FC<PlaceDetailsModalProps> = ({
 
           <div className="space-y-1.5">
             <h4 className="font-bold text-xs text-on-surface uppercase tracking-wider">
-              Historical &amp; Archival Description
+              Description
             </h4>
             <p className="text-secondary leading-relaxed whitespace-pre-line">
-              {place.description ||
-                'Officially cataloged heritage record under the national cultural preservation framework. Maintained by Archaeological Survey of India circle jurisdiction.'}
+              {place.fullDescription || place.description || 'Cataloged heritage record maintained in Our_Dharohar.'}
             </p>
           </div>
 
-          {(place.builtYear || place.dynasty || place.openingHours) && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-surface-container-low rounded-lg border border-surface-container text-[0.72rem]">
-              {place.builtYear && (
+          {/* Dynamic Category Fields */}
+          {categoryDef && categoryDef.fields && categoryDef.fields.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="font-bold text-xs text-on-surface uppercase tracking-wider">
+                {categoryDef.title} Details
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 bg-surface-container-low rounded-lg border border-surface-container text-[0.72rem]">
+                {categoryDef.fields.map((field) => {
+                  const val = fields[field.name];
+                  if (val === undefined || val === null || val === '') return null;
+
+                  if (field.type === 'group' && typeof val === 'object') {
+                    return (
+                      <div key={field.name} className="col-span-full space-y-1 pt-1 border-t border-surface-container/60 first:border-0 first:pt-0">
+                        <span className="text-secondary block font-bold uppercase text-[0.62rem]">{field.label}</span>
+                        <div className="grid grid-cols-3 gap-2">
+                          {field.fields?.map((subField) => (
+                            <div key={subField.name} className="bg-surface-bright p-1.5 rounded border border-outline-variant/40">
+                              <span className="text-[0.6rem] text-secondary uppercase font-semibold block">{subField.label || subField.name}</span>
+                              <span className="font-semibold text-on-surface">₹{val[subField.name] ?? '—'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div key={field.name}>
+                      <span className="text-secondary block font-bold uppercase text-[0.62rem]">{field.label}</span>
+                      <span className="font-semibold text-on-surface">{String(val)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Location details */}
+          {place.latitude !== undefined && place.longitude !== undefined && (
+            <div className="p-3 bg-surface-container-low rounded-lg border border-surface-container flex items-center justify-between text-[0.72rem]">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-base">location_on</span>
                 <div>
-                  <span className="text-secondary block font-bold uppercase text-[0.62rem]">Built Year</span>
-                  <span className="font-semibold text-on-surface">{place.builtYear}</span>
+                  <span className="text-secondary block font-bold uppercase text-[0.62rem]">Coordinates</span>
+                  <span className="font-mono text-on-surface">{place.latitude.toFixed(4)}° N, {place.longitude.toFixed(4)}° E</span>
                 </div>
-              )}
-              {place.dynasty && (
-                <div>
-                  <span className="text-secondary block font-bold uppercase text-[0.62rem]">Dynasty / Era</span>
-                  <span className="font-semibold text-on-surface">{place.dynasty}</span>
-                </div>
-              )}
-              {place.openingHours && (
-                <div>
-                  <span className="text-secondary block font-bold uppercase text-[0.62rem]">Timings</span>
-                  <span className="font-semibold text-on-surface">{place.openingHours}</span>
-                </div>
-              )}
+              </div>
             </div>
           )}
         </div>
@@ -422,11 +449,11 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
   selectedDistrictId,
 }) => {
   const [name, setName] = useState('');
-  const [designation, setDesignation] = useState('Superintending Archaeologist');
+  const [designation, setDesignation] = useState('Heritage Administrative Officer');
   const [role, setRole] = useState<'super_admin' | 'state_admin' | 'district_admin' | 'editor' | 'reviewer'>('editor');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [circle, setCircle] = useState(`${selectedState || 'National'} Circle`);
+  const [circle, setCircle] = useState(`${selectedDistrict || selectedState || 'National'} Circle`);
 
   if (!isOpen) return null;
 
@@ -458,10 +485,10 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
             </div>
             <div>
               <h3 className="font-display font-bold text-sm text-on-surface">
-                Invite / Register New Admin Officer
+                Register New Admin Officer
               </h3>
               <p className="text-[0.66rem] text-secondary">
-                Grant circle, state, or super admin credentials with institutional email verification.
+                Grant national, state, or district administrative privileges with secure role isolation.
               </p>
             </div>
           </div>
@@ -483,7 +510,7 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Dr. Ramesh Chander"
+              placeholder="e.g. Ramesh Chander"
               className="w-full bg-[#fbf9f5] border border-outline-variant/60 rounded-lg p-2 text-on-surface focus:outline-none focus:border-primary"
               required
             />
@@ -503,7 +530,7 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
                 type="text"
                 value={designation}
                 onChange={(e) => setDesignation(e.target.value)}
-                placeholder="e.g. Circle Archaeologist"
+                placeholder="e.g. District Heritage Officer"
                 className="w-full bg-[#fbf9f5] border border-outline-variant/60 rounded-lg p-2 text-on-surface focus:outline-none focus:border-primary"
               />
             </div>
@@ -519,21 +546,21 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
                 <option value="super_admin">Super Admin (National)</option>
                 <option value="state_admin">State Admin ({selectedState || 'Selected State'})</option>
                 <option value="district_admin">District Admin ({selectedDistrict || 'Selected District'})</option>
-                <option value="editor">Circle Editor</option>
-                <option value="reviewer">Archival Auditor</option>
+                <option value="editor">District Editor</option>
+                <option value="reviewer">Reviewer / Auditor</option>
               </select>
             </div>
           </div>
 
           <div className="space-y-1">
             <label className="block text-[0.68rem] font-bold text-on-surface uppercase">
-              GovNet / Official Email *
+              Official Admin Email *
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="ramesh.chander@asi.gov.in"
+              placeholder="officer@dharohar.gov.in"
               className="w-full bg-[#fbf9f5] border border-outline-variant/60 rounded-lg p-2 text-on-surface focus:outline-none focus:border-primary font-mono text-[0.72rem]"
               required
             />
@@ -541,13 +568,13 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
 
           <div className="space-y-1">
             <label className="block text-[0.68rem] font-bold text-on-surface uppercase">
-              Assigned Jurisdiction Circle / Jurisdiction
+              Assigned Jurisdiction / Circle
             </label>
             <input
               type="text"
               value={circle}
               onChange={(e) => setCircle(e.target.value)}
-              placeholder="e.g. Rajasthan Circle (Jaipur)"
+              placeholder="e.g. Indore Circle (Madhya Pradesh)"
               className="w-full bg-[#fbf9f5] border border-outline-variant/60 rounded-lg p-2 text-on-surface focus:outline-none focus:border-primary"
             />
           </div>
@@ -564,7 +591,7 @@ export const InviteAdminModal: React.FC<InviteAdminModalProps> = ({
               type="submit"
               className="px-4 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-primary-container transition-colors shadow-sm"
             >
-              Send GovNet Invitation
+              Register Officer
             </button>
           </div>
         </form>
@@ -634,7 +661,7 @@ export const AddJurisdictionModal: React.FC<AddJurisdictionModalProps> = ({
               type="text"
               value={newState}
               onChange={(e) => setNewState(e.target.value)}
-              placeholder="e.g. Rajasthan, Uttarakhand"
+              placeholder="e.g. Rajasthan, Madhya Pradesh"
               className="w-full bg-[#fbf9f5] border border-outline-variant/60 rounded-lg p-2 text-on-surface focus:outline-none focus:border-primary"
               required
             />
@@ -648,7 +675,7 @@ export const AddJurisdictionModal: React.FC<AddJurisdictionModalProps> = ({
               type="text"
               value={newDistrict}
               onChange={(e) => setNewDistrict(e.target.value)}
-              placeholder="e.g. Jaipur, Dehradun"
+              placeholder="e.g. Jaipur, Indore"
               className="w-full bg-[#fbf9f5] border border-outline-variant/60 rounded-lg p-2 text-on-surface focus:outline-none focus:border-primary"
               required
             />
@@ -674,3 +701,4 @@ export const AddJurisdictionModal: React.FC<AddJurisdictionModalProps> = ({
     </div>
   );
 };
+

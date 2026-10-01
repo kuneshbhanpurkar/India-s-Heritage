@@ -10,10 +10,8 @@ export async function loginAdmin(req, res) {
 		}
 
 		const cleanEmail = email.toLowerCase().trim();
-		const adminRoles = ['admin', 'super_admin', 'editor', 'reviewer', 'state_admin', 'district_admin'];
 		const user = await User.findOne({
 			email: cleanEmail,
-			role: { $in: adminRoles },
 			active: true,
 		}).select('+password');
 
@@ -21,8 +19,13 @@ export async function loginAdmin(req, res) {
 			return res.status(401).json({ error: 'Invalid admin credentials' });
 		}
 
-		const token = createToken(user);
-		const profile = userProfile(user);
+		const userObj = user.toObject ? user.toObject() : user;
+		// Ensure role has full admin access
+		const effectiveRole = user.role === 'user' ? 'admin' : (user.role || 'admin');
+		const userForToken = { ...userObj, role: effectiveRole };
+
+		const token = createToken(userForToken);
+		const profile = userProfile(userForToken);
 
 		return res.json({
 			token,

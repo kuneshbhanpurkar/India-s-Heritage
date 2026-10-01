@@ -40,7 +40,7 @@ export const ManageAdminsPage: React.FC<ManageAdminsPageProps> = ({
       off.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       off.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       off.designation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      off.circle.toLowerCase().includes(searchQuery.toLowerCase())
+      (off.circle ? off.circle.toLowerCase().includes(searchQuery.toLowerCase()) : false)
   );
 
   return (

@@ -2,12 +2,12 @@ import 'dotenv/config';
 import dns from 'dns';
 import { connectDatabase, disconnectDatabase } from '../config/db.js';
 import Category from '../models/Category.js';
-import { CITY_SECTIONS } from '../config/sections.js';
+import { CITY_SECTIONS } from '../config/categoryDefinitions.js';
 
 dns.setServers(['1.1.1.1', '8.8.8.8']);
 
 export async function seedCategories() {
-	console.log('Seeding canonical categories into database...');
+	console.log('Seeding 5 canonical categories into database...');
 	let order = 1;
 	for (const sec of CITY_SECTIONS) {
 		await Category.findOneAndUpdate(

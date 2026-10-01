@@ -1,4 +1,4 @@
-import { CitySectionConfig } from './config/sections';
+import { CitySectionConfig, resolveCategorySlug, CATEGORY_DEFINITIONS } from './config/categoryDefinitions';
 import { AdminOfficer, HeritagePlace, PdfDocument, VideoRecord } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
@@ -26,9 +26,12 @@ export interface ApiContent {
   fullDescription?: string;
   slug: string;
   section?: string;
+  category?: string;
   status: 'draft' | 'review' | 'published' | 'hidden' | 'archived';
   featured?: boolean;
   isFeatured?: boolean;
+  mediaEnabled?: boolean;
+  documentsEnabled?: boolean;
   districtId: string;
   cityId?: string;
   cityName?: string;
@@ -38,10 +41,10 @@ export interface ApiContent {
   latitude?: number;
   longitude?: number;
   location?: { type: string; coordinates: [number, number] };
-  fields?: Record<string, unknown>;
-  media?: Array<{ type: string; url: string; alt?: string; title?: string; caption?: string }>;
-  documents?: Array<{ title?: string; type?: string; url?: string; author?: string; publisher?: string }>;
-  sources?: Array<{ sourceTitle?: string; sourceUrl?: string; publisher?: string }>;
+  fields?: Record<string, any>;
+  media?: Array<{ type: 'image' | 'video' | 'pdf' | 'audio'; url: string; alt?: string; title?: string; caption?: string }>;
+  documents?: Array<{ title: string; type?: string; url: string; author?: string; publisher?: string }>;
+  sources?: Array<{ sourceTitle: string; sourceUrl?: string; publisher?: string; attribution?: string }>;
   createdAt?: string;
   updatedAt?: string;
   publishedAt?: string;
@@ -57,7 +60,7 @@ export interface AdminSummary {
 }
 
 export const loginAdmin = (email: string, password: string) =>
-  request<{ token: string; admin: { id: string; name: string; email: string; role: 'super_admin' | 'editor' | 'reviewer' } }>('/api/auth/login', {
+  request<{ token: string; admin: { id: string; name: string; email: string; role: 'super_admin' | 'editor' | 'reviewer' | 'admin' | 'state_admin' | 'district_admin' } }>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
@@ -120,29 +123,40 @@ export const deleteContent = (token: string, id: string) =>
   request<void>(`/api/admin/content/${encodeURIComponent(id)}`, { method: 'DELETE' }, token);
 
 export const getAdminOfficers = async (token: string) => {
-  const admins = await request<Array<{ _id: string; name: string; email: string; role: 'super_admin' | 'editor' | 'reviewer'; active: boolean }>>('/api/admin/admins', {}, token);
+  const admins = await request<Array<{ _id: string; name: string; email: string; role: 'super_admin' | 'editor' | 'reviewer' | 'admin' | 'state_admin' | 'district_admin'; active: boolean; state?: string; district?: string }>>('/api/admin/admins', {}, token);
   return admins.map(mapAdminOfficer);
 };
 
-export const mapAdminOfficer = (admin: { _id?: string; id?: string; name: string; email: string; role: 'super_admin' | 'editor' | 'reviewer'; active: boolean }): AdminOfficer => {
+export const mapAdminOfficer = (admin: { _id?: string; id?: string; name: string; email: string; role: string; active: boolean; state?: string; district?: string }): AdminOfficer => {
   const id = admin._id || admin.id || '';
+  let designation = 'Officer';
+  if (admin.role === 'super_admin' || admin.role === 'admin') designation = 'National Administrator';
+  else if (admin.role === 'state_admin') designation = 'State Administrator';
+  else if (admin.role === 'district_admin') designation = 'District Administrator';
+  else if (admin.role === 'reviewer') designation = 'Archival Auditor';
+  else designation = 'Content Editor';
+
   return {
     id,
+    _id: id,
     name: admin.name,
     email: admin.email,
     code: `#ADM-${id.slice(-4).toUpperCase()}`,
-    designation: admin.role === 'super_admin' ? 'Director General' : 'Circle Administrator',
-    role: admin.role === 'super_admin' ? 'Super Admin' : admin.role === 'reviewer' ? 'Archival Auditor' : 'Circle Admin',
+    designation,
+    role: admin.role,
     status: admin.active ? 'Active' : 'Suspended',
-    circle: 'National Portal',
+    circle: admin.district ? `${admin.district}, ${admin.state || ''}` : admin.state || 'National Portal',
+    state: admin.state,
+    district: admin.district,
+    active: admin.active,
   };
 };
 
 export const createAdminOfficer = (token: string, body: Record<string, unknown>) =>
-  request<{ id: string; name: string; email: string; role: 'super_admin' | 'editor' | 'reviewer'; active: boolean }>('/api/admin/admins', { method: 'POST', body: JSON.stringify(body) }, token).then(mapAdminOfficer);
+  request<{ id: string; name: string; email: string; role: string; active: boolean }>('/api/admin/admins', { method: 'POST', body: JSON.stringify(body) }, token).then(mapAdminOfficer);
 
 export const updateAdminOfficer = (token: string, id: string, body: Record<string, unknown>) =>
-  request<{ id: string; name: string; email: string; role: 'super_admin' | 'editor' | 'reviewer'; active: boolean }>(`/api/admin/admins/${id}`, { method: 'PUT', body: JSON.stringify(body) }, token).then(mapAdminOfficer);
+  request<{ id: string; name: string; email: string; role: string; active: boolean }>(`/api/admin/admins/${id}`, { method: 'PUT', body: JSON.stringify(body) }, token).then(mapAdminOfficer);
 
 export const toHeritagePlace = (item: ApiContent): HeritagePlace => {
   const fields = item.fields || {};
@@ -156,74 +170,89 @@ export const toHeritagePlace = (item: ApiContent): HeritagePlace => {
       : item.status === 'archived'
       ? 'Archived'
       : 'Draft (In Curation)';
-  const lat = item.latitude !== undefined ? item.latitude : (fields.latitude as number | undefined);
-  const lng = item.longitude !== undefined ? item.longitude : (fields.longitude as number | undefined);
+
+  const lat = item.latitude !== undefined && item.latitude !== null ? item.latitude : (fields.latitude as number | undefined);
+  const lng = item.longitude !== undefined && item.longitude !== null ? item.longitude : (fields.longitude as number | undefined);
   const districtId = item.districtId || item.cityId || '';
   const cityName = item.cityName || String(fields.city || '');
+  const canonicalSection = resolveCategorySlug(item.section) || 'heritage-places';
+
+  const imageMedia = item.media?.find((m) => m.type === 'image')?.url;
 
   return {
     id: item._id,
+    _id: item._id,
     name: item.title,
-    code: String(fields.code || `#${item.slug.toUpperCase()}`),
-    category: (fields.category || 'Other') as HeritagePlace['category'],
+    title: item.title,
+    code: String(fields.code || `#${(item.slug || item._id).toUpperCase().slice(-6)}`),
+    category: item.category || CATEGORY_DEFINITIONS[canonicalSection]?.title || 'Heritage & Places',
+    section: canonicalSection,
     city: cityName,
+    cityName,
     subLocation: String(fields.subLocation || ''),
     status,
-    imageUrl: String(fields.imageUrl || item.media?.find((media) => media.type === 'image')?.url || ''),
+    imageUrl: String(fields.imageUrl || imageMedia || ''),
     description: String(item.shortDescription || fields.description || ''),
-    openingHours: String(fields.openingHours || ''),
-    builtYear: String(fields.builtYear || ''),
-    dynasty: String(fields.dynasty || ''),
+    shortDescription: String(item.shortDescription || fields.description || ''),
+    fullDescription: String(item.fullDescription || fields.fullDescription || ''),
     subTitle: String(item.subtitle || fields.subTitle || ''),
-    visitorTariffs: fields.visitorTariffs as any,
+    fields,
     media: item.media || [],
+    documents: item.documents || [],
+    sources: item.sources || [],
     latitude: lat,
     longitude: lng,
-    section: item.section || 'popular-places',
     districtId,
     stateId: item.stateId,
-    visualsMediaEnabled: fields.visualsMediaEnabled !== false,
-    bookEnabled: fields.bookEnabled !== false,
+    visualsMediaEnabled: item.mediaEnabled !== false && fields.visualsMediaEnabled !== false,
+    bookEnabled: item.documentsEnabled !== false && fields.bookEnabled !== false,
+    publishedAt: item.publishedAt,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
   };
 };
 
 export const toContentPayload = (
   place: Partial<HeritagePlace>,
   districtId: string,
-  categoryId: string,
-  media: Array<{ type: string; url: string; alt?: string }> = []
-) => ({
-  districtId,
-  cityId: districtId,
-  categoryId,
-  section: categoryId || place.section || 'popular-places',
-  title: place.name,
-  subtitle: place.subTitle || '',
-  shortDescription: place.description || '',
-  fullDescription: place.description || '',
-  status: place.status === 'Published' ? 'published' : place.status === 'Verification Pending' ? 'review' : 'draft',
-  latitude: place.latitude,
-  longitude: place.longitude,
-  mediaEnabled: place.visualsMediaEnabled !== false,
-  documentsEnabled: place.bookEnabled !== false,
-  fields: {
-    code: place.code,
-    category: place.category,
-    city: place.city,
-    subLocation: place.subLocation,
-    imageUrl: place.imageUrl,
-    description: place.description,
-    openingHours: place.openingHours,
-    builtYear: place.builtYear,
-    dynasty: place.dynasty,
-    subTitle: place.subTitle,
-    visitorTariffs: place.visitorTariffs,
+  categorySlug: string,
+  media: Array<{ type: 'image' | 'video' | 'pdf' | 'audio'; url: string; alt?: string; title?: string }> = [],
+  documents: Array<{ title: string; type?: string; url: string; author?: string; publisher?: string }> = [],
+  sources: Array<{ sourceTitle: string; sourceUrl?: string; publisher?: string }> = []
+) => {
+  const canonicalSlug = resolveCategorySlug(categorySlug || place.section) || 'heritage-places';
+
+  return {
+    districtId,
+    cityId: districtId,
+    section: canonicalSlug,
+    title: place.name || place.title || '',
+    subtitle: place.subTitle || '',
+    shortDescription: place.shortDescription || place.description || '',
+    fullDescription: place.fullDescription || place.description || '',
+    status:
+      place.status === 'Draft (In Curation)' || place.status === 'draft'
+        ? 'draft'
+        : place.status === 'Verification Pending'
+        ? 'review'
+        : place.status === 'Hidden'
+        ? 'hidden'
+        : place.status === 'Archived'
+        ? 'archived'
+        : 'published',
     latitude: place.latitude,
     longitude: place.longitude,
-    visualsMediaEnabled: place.visualsMediaEnabled !== false,
-    bookEnabled: place.bookEnabled !== false,
-  },
-  media: place.media || media,
-});
+    mediaEnabled: place.visualsMediaEnabled !== false,
+    documentsEnabled: place.bookEnabled !== false,
+    fields: {
+      ...(place.fields || {}),
+      visualsMediaEnabled: place.visualsMediaEnabled !== false,
+      bookEnabled: place.bookEnabled !== false,
+    },
+    media: place.media || media,
+    documents: place.documents || documents,
+    sources: place.sources || sources,
+  };
+};
 
 export type { VideoRecord, PdfDocument };

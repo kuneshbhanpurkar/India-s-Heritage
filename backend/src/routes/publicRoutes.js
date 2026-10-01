@@ -24,6 +24,8 @@ router.get('/cities/:cityId', getCity);
 router.get('/districts/:cityId', getCity);
 router.get('/cities/:cityId/sections', getCitySections);
 router.get('/districts/:cityId/sections', getCitySections);
+router.get('/cities/:cityId/dashboard', getCitySections);
+router.get('/districts/:cityId/dashboard', getCitySections);
 router.get('/cities/:cityId/categories', listDistrictCategories);
 router.get('/districts/:districtId/categories', listDistrictCategories);
 

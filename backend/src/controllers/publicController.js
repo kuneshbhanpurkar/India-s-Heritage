@@ -2,14 +2,57 @@ import State from '../models/State.js';
 import City from '../models/City.js';
 import Content from '../models/Content.js';
 import DistrictCategory from '../models/DistrictCategory.js';
-import { CITY_SECTIONS, getSectionBySlug, VALID_SECTION_SLUGS } from '../config/sections.js';
+import {
+	CITY_SECTIONS,
+	CATEGORY_DEFINITIONS,
+	getSectionBySlug,
+	resolveCategorySlug,
+	VALID_CATEGORY_SLUGS,
+} from '../config/categoryDefinitions.js';
 import { isValidId } from '../utils/auth.js';
 
-// Format item to minimal lightweight card
+// Format item to minimal lightweight card — includes real media/video from DB
 function toCard(item) {
 	const fields = item.fields || {};
-	const img = item.media?.find((m) => m?.type === 'image' && m?.url)?.url || fields.imageUrl || '';
+	const mediaArr = Array.isArray(item.media) ? item.media : [];
+	const img = mediaArr.find((m) => m?.type === 'image' && m?.url)?.url || fields.imageUrl || '';
 	const id = item._id.toString();
+	const canonicalSection = resolveCategorySlug(item.section) || item.section;
+
+	// Build dynamic visitor tariffs from fields.entryFee
+	let visitorTariffs = [];
+	if (fields.entryFee) {
+		if (typeof fields.entryFee === 'object') {
+			if (fields.entryFee.domestic) {
+				visitorTariffs.push({ category: 'Indian Citizens', price: `₹${fields.entryFee.domestic}`, highlight: true });
+			}
+			if (fields.entryFee.student) {
+				visitorTariffs.push({ category: 'Students', price: `₹${fields.entryFee.student}` });
+			}
+			if (fields.entryFee.foreign) {
+				visitorTariffs.push({ category: 'Foreign Visitors', price: `₹${fields.entryFee.foreign}` });
+			}
+		} else if (typeof fields.entryFee === 'string' && fields.entryFee.trim()) {
+			const fee = fields.entryFee.trim();
+			visitorTariffs.push({ category: 'General Entry', price: fee.startsWith('₹') ? fee : `₹${fee}`, highlight: true });
+		}
+	}
+	if (visitorTariffs.length === 0) {
+		visitorTariffs = [{ category: 'General Entry', price: '₹25', highlight: true }];
+	}
+
+	// Map all DB media items to frontend MediaItem shape
+	const mediaItems = mediaArr.map((m, idx) => ({
+		id: `${id}-m${idx}`,
+		title: m.title || item.title,
+		category: m.type === 'video' ? 'Documentary Films' : m.type === 'audio' ? 'Sound & Light' : 'Archival Photography',
+		badge: m.type === 'video' ? 'Video Record' : m.type === 'audio' ? 'Audio Archive' : 'Official Archive',
+		duration: '',
+		image: m.type === 'image' ? m.url : (img || ''),
+		videoUrl: m.type === 'video' ? m.url : (m.url && (m.url.includes('youtu') || m.url.includes('vimeo') || m.url.endsWith('.mp4')) ? m.url : undefined),
+		description: m.caption || m.alt || m.title || '',
+		meta: m.source || 'Official Heritage Record',
+	}));
 
 	return {
 		id,
@@ -19,21 +62,27 @@ function toCard(item) {
 		slug: item.slug,
 		cityId: item.cityId?.toString(),
 		districtId: item.cityId?.toString(),
-		section: item.section,
-		category: item.category || fields.category || 'Heritage',
+		section: canonicalSection,
+		category: item.category || CATEGORY_DEFINITIONS[canonicalSection]?.title || 'Heritage',
 		image: img,
 		subTitle: item.subtitle || fields.subTitle || '',
 		shortDescription: item.shortDescription || fields.description || '',
+		fullDescription: item.fullDescription || fields.fullDescription || '',
 		rating: Number(fields.rating || 4.8),
 		reviewsCount: fields.reviewsCount || '120 reviews',
-		builtYear: fields.builtYear || '',
-		dynasty: fields.dynasty || '',
-		openingHours: fields.openingHours || '9:00 AM - 6:00 PM',
+		builtYear: fields.builtYear || fields.era || '',
+		dynasty: fields.dynasty || fields.builtBy || '',
+		openingHours: fields.timings || fields.openingHours || '9:00 AM - 6:00 PM',
+		visitorTariffs,
 		distanceKm: Number(fields.distanceKm || 0),
 		distanceDisplay: fields.distanceDisplay || '',
 		isFeatured: Boolean(item.isFeatured),
 		latitude: item.latitude !== undefined ? item.latitude : item.location?.coordinates?.[1] || 0,
 		longitude: item.longitude !== undefined ? item.longitude : item.location?.coordinates?.[0] || 0,
+		mediaItems,
+		fields,
+		documents: Array.isArray(item.documents) ? item.documents : [],
+		sources: Array.isArray(item.sources) ? item.sources : [],
 	};
 }
 
@@ -107,46 +156,44 @@ export async function getCitySections(req, res) {
 		const customConfigs = await DistrictCategory.find({ districtId: city._id }).lean();
 		const configMap = new Map();
 		customConfigs.forEach((c) => {
-			if (c.categorySlug) configMap.set(c.categorySlug.toLowerCase(), c.enabled);
+			const canonical = resolveCategorySlug(c.categorySlug);
+			if (canonical) {
+				configMap.set(canonical, c.enabled);
+			}
 		});
 
 		// Filter active canonical sections
 		const enabledSections = CITY_SECTIONS.filter((section) => {
-			const slug = section.slug.toLowerCase();
-			if (configMap.has(slug)) return configMap.get(slug);
-			if (section.aliases && section.aliases.some((a) => configMap.has(a.toLowerCase()))) {
-				const matchedAlias = section.aliases.find((a) => configMap.has(a.toLowerCase()));
-				return configMap.get(matchedAlias.toLowerCase());
-			}
+			const slug = section.slug;
+			if (configMap.has(slug)) return configMap.get(slug) !== false;
 			return true; // Default is enabled
 		});
 
-		// Get content counts for each enabled section
-		const sectionCounts = await Content.aggregate([
-			{
-				$match: {
+		// Get content counts + preview items per enabled section
+		const sectionResults = await Promise.all(
+			enabledSections.map(async (sec) => {
+				const sectionQuery = {
 					cityId: city._id,
+					section: { $in: [sec.slug, ...(sec.aliases || [])] },
 					status: 'published',
 					active: { $ne: false },
-				},
-			},
-			{
-				$group: {
-					_id: '$section',
-					count: { $sum: 1 },
-				},
-			},
-		]);
+				};
+				const [total, previewItems] = await Promise.all([
+					Content.countDocuments(sectionQuery),
+					Content.find(sectionQuery)
+						.sort({ isFeatured: -1, createdAt: -1 })
+						.limit(4)
+						.lean(),
+				]);
+				return {
+					...sec,
+					totalCount: total,
+					items: previewItems.map(toCard),
+				};
+			})
+		);
 
-		const countMap = new Map();
-		sectionCounts.forEach((s) => countMap.set(s._id, s.count));
-
-		const response = enabledSections.map((sec) => ({
-			...sec,
-			count: countMap.get(sec.slug) || 0,
-		}));
-
-		return res.json(response);
+		return res.json({ city: { id: city._id.toString(), name: city.name }, sections: sectionResults });
 	} catch (error) {
 		console.error('Get city sections error:', error);
 		return res.status(500).json({ error: 'Unable to load district sections' });
@@ -178,7 +225,7 @@ export async function getCitySectionContent(req, res) {
 		// Check if section is enabled for this district
 		const customConfig = await DistrictCategory.findOne({
 			districtId: city._id,
-			$or: [{ categorySlug: secMeta.slug }, { categorySlug: { $in: secMeta.aliases || [] } }],
+			categorySlug: secMeta.slug,
 		}).lean();
 
 		if (customConfig && customConfig.enabled === false) {
@@ -196,14 +243,24 @@ export async function getCitySectionContent(req, res) {
 			query.title = { $regex: search.trim(), $options: 'i' };
 		}
 
-		const skip = (Math.max(1, parseInt(page, 10)) - 1) * parseInt(limit, 10);
-		const items = await Content.find(query)
-			.sort({ isFeatured: -1, createdAt: -1 })
-			.skip(skip)
-			.limit(parseInt(limit, 10))
-			.lean();
+		const pageNum = Math.max(1, parseInt(page, 10));
+		const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10)));
+		const skip = (pageNum - 1) * limitNum;
+		const [total, items] = await Promise.all([
+			Content.countDocuments(query),
+			Content.find(query)
+				.sort({ isFeatured: -1, createdAt: -1 })
+				.skip(skip)
+				.limit(limitNum)
+				.lean(),
+		]);
 
-		return res.json(items.map(toCard));
+		return res.json({
+			city: { id: city._id.toString(), name: city.name },
+			section: { slug: secMeta.slug, title: secMeta.title, type: secMeta.type, description: secMeta.description },
+			pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.ceil(total / limitNum) },
+			items: items.map(toCard),
+		});
 	} catch (error) {
 		console.error('Get city section content error:', error);
 		return res.status(500).json({ error: 'Unable to load heritage content' });
@@ -234,16 +291,24 @@ export async function getContentByIdOrSlug(req, res) {
 			return res.status(404).json({ error: 'Heritage record not found' });
 		}
 
+		const canonicalSection = resolveCategorySlug(item.section) || item.section;
+		const card = toCard(item);
+
 		return res.json({
+			...card,
 			...item,
 			_id: item._id.toString(),
 			id: item._id.toString(),
+			name: item.title,
+			section: canonicalSection,
+			category: item.category || CATEGORY_DEFINITIONS[canonicalSection]?.title || 'Heritage',
 			cityName: item.cityId?.name || '',
 			stateName: item.stateId?.name || '',
 			districtName: item.cityId?.name || '',
 			subtitle: item.subtitle || item.fields?.subTitle || '',
 			shortDescription: item.shortDescription || item.fields?.description || '',
 			fullDescription: item.fullDescription || item.fields?.fullDescription || '',
+			mediaItems: card.mediaItems,
 		});
 	} catch (error) {
 		console.error('Get content by slug error:', error);
@@ -298,8 +363,13 @@ export async function listContent(req, res) {
 			query.cityId = targetCityId;
 		}
 
-		if (section && VALID_SECTION_SLUGS.includes(section)) {
-			query.section = section;
+		const targetSection = section || categoryId;
+		if (targetSection) {
+			const canonical = resolveCategorySlug(targetSection);
+			if (canonical) {
+				const definition = CATEGORY_DEFINITIONS[canonical];
+				query.section = { $in: [canonical, ...(definition?.aliases || [])] };
+			}
 		}
 
 		if (isFeatured !== undefined) {
@@ -329,16 +399,15 @@ export async function listDistrictCategories(req, res) {
 		const customConfigs = await DistrictCategory.find({ districtId: targetDistrictId }).lean();
 		const configMap = new Map();
 		customConfigs.forEach((c) => {
-			if (c.categorySlug) configMap.set(c.categorySlug.toLowerCase(), c.enabled);
+			const canonical = resolveCategorySlug(c.categorySlug);
+			if (canonical) {
+				configMap.set(canonical, c.enabled);
+			}
 		});
 
 		const result = CITY_SECTIONS.filter((section) => {
-			const slug = section.slug.toLowerCase();
+			const slug = section.slug;
 			if (configMap.has(slug)) return configMap.get(slug) !== false;
-			if (section.aliases && section.aliases.some((a) => configMap.has(a.toLowerCase()))) {
-				const matchedAlias = section.aliases.find((a) => configMap.has(a.toLowerCase()));
-				return configMap.get(matchedAlias.toLowerCase()) !== false;
-			}
 			return true;
 		});
 

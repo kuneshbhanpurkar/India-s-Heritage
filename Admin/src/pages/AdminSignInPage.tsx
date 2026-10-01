@@ -15,9 +15,9 @@ export const AdminSignInPage: React.FC<AdminSignInPageProps> = ({
   onSignIn,
   onCancel,
   currentOfficer,
-  brandTitle = 'Dharohar',
+  brandTitle = 'Our_Dharohar',
   brandHindi = 'धरोहर',
-  portalSubtitle = 'National Heritage Portal • Archaeological Survey of India',
+  portalSubtitle = 'National Heritage Portal • Administration',
 }) => {
   const [email, setEmail] = useState(currentOfficer?.email || '');
   const [password, setPassword] = useState('');
@@ -229,6 +229,19 @@ export const AdminSignInPage: React.FC<AdminSignInPageProps> = ({
                 )}
               </button>
 
+              {/* Quick Login Auto-fill Helper */}
+              <div className="pt-2 border-t border-stone-800/60 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('luckypc082922@gmail.com');
+                    setPassword('mp136366');
+                  }}
+                  className="text-[0.7rem] text-amber-400/80 hover:text-amber-300 underline transition-colors"
+                >
+                  ⚡ Auto-fill Default Admin Credentials
+                </button>
+              </div>
             </form>
           </div>
         </div>

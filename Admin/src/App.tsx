@@ -20,7 +20,6 @@ import {
   getAdminOfficers,
   getAdminStates,
   getAdminSummary,
-  loginAdmin,
   patchContentStatus,
   toContentPayload,
   toHeritagePlace,
@@ -30,7 +29,13 @@ import {
   updateContent,
   AdminSummary,
 } from './api';
-import { CITY_SECTIONS, CitySectionConfig, getSectionBySlug, getSectionTitle } from './config/sections';
+import {
+  CITY_SECTIONS,
+  CitySectionConfig,
+  getSectionBySlug,
+  getSectionTitle,
+  resolveCategorySlug,
+} from './config/categoryDefinitions';
 import {
   ImagePreviewModal,
   VideoPreviewModal,
@@ -42,7 +47,7 @@ import {
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
-  const [selectedSection, setSelectedSection] = useState<string>('popular-places');
+  const [selectedSection, setSelectedSection] = useState<string>('heritage-places');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   // Authentication State
@@ -61,8 +66,6 @@ export default function App() {
   const [editingPlace, setEditingPlace] = useState<HeritagePlace | null>(null);
   const [categoryConfigs, setCategoryConfigs] = useState<Array<CitySectionConfig & { enabled: boolean }>>([]);
   const [summary, setSummary] = useState<AdminSummary | null>(null);
-  const [videos, setVideos] = useState<VideoRecord[]>([]);
-  const [pdfDocuments, setPdfDocuments] = useState<PdfDocument[]>([]);
   const [officers, setOfficers] = useState<AdminOfficer[]>([]);
   const [adminToken, setAdminToken] = useState<string | null>(() => sessionStorage.getItem('dharohar_admin_token'));
   const [statesAndDistricts, setStatesAndDistricts] = useState<Record<string, string[]>>({});
@@ -301,12 +304,13 @@ export default function App() {
   const handleToggleCategoryStatus = async (categorySlug: string, enabled: boolean) => {
     if (!adminToken || !selectedDistrictId) return;
     try {
-      await updateAdminDistrictCategory(adminToken, selectedDistrictId, categorySlug, enabled);
+      const canonical = resolveCategorySlug(categorySlug) || categorySlug;
+      await updateAdminDistrictCategory(adminToken, selectedDistrictId, canonical, enabled);
       setCategoryConfigs((prev) =>
-        prev.map((c) => (c.slug === categorySlug ? { ...c, enabled } : c))
+        prev.map((c) => (c.slug === canonical ? { ...c, enabled } : c))
       );
       setAuthToast(
-        `"${getSectionTitle(categorySlug)}" is now ${enabled ? 'Enabled' : 'Disabled'} for ${selectedDistrict}`
+        `"${getSectionTitle(canonical)}" is now ${enabled ? 'Enabled' : 'Disabled'} for ${selectedDistrict}`
       );
       setTimeout(() => setAuthToast(null), 3000);
     } catch (err) {
@@ -315,7 +319,7 @@ export default function App() {
     }
   };
 
-  // Place operations (Create or Update Existing Record)
+  // Place operations (Create or Update Existing Record in Place)
   const handleSavePlaceRecord = async (placeData: Partial<HeritagePlace>, existingId?: string) => {
     if (!adminToken || !selectedDistrictId) {
       alert('Please select a valid district workspace before saving records.');
@@ -323,12 +327,14 @@ export default function App() {
     }
 
     try {
+      const targetCategory = resolveCategorySlug(placeData.section || selectedSection) || 'heritage-places';
+
       if (existingId) {
-        // UPDATE EXISTING RECORD
+        // UPDATE EXISTING RECORD (Never duplicates document)
         const updated = await updateContent(
           adminToken,
           existingId,
-          toContentPayload(placeData, selectedDistrictId, selectedSection)
+          toContentPayload(placeData, selectedDistrictId, targetCategory)
         );
         const mapped = toHeritagePlace(updated);
         setPlaces((prev) => prev.map((p) => (p.id === existingId ? mapped : p)));
@@ -337,7 +343,7 @@ export default function App() {
         // CREATE NEW RECORD
         const created = await createContent(
           adminToken,
-          toContentPayload(placeData, selectedDistrictId, selectedSection)
+          toContentPayload(placeData, selectedDistrictId, targetCategory)
         );
         const mapped = toHeritagePlace(created);
         setPlaces((prev) => [mapped, ...prev]);
@@ -356,7 +362,7 @@ export default function App() {
   const handleDeletePlace = async (id: string) => {
     if (!adminToken) return;
     const confirmDelete = window.confirm(
-      'Are you sure you want to permanently delete this heritage record from the National Database?'
+      'Are you sure you want to delete this heritage record? It will be safely soft-deleted from active registry.'
     );
     if (!confirmDelete) return;
     try {
@@ -390,26 +396,6 @@ export default function App() {
     }
   };
 
-  // Video operations
-  const handleAddVideo = (video: Omit<VideoRecord, 'id'>) => {
-    const newVideo: VideoRecord = { ...video, id: `vid-${Date.now()}` };
-    setVideos((prev) => [newVideo, ...prev]);
-  };
-
-  const handleDeleteVideo = (id: string) => {
-    setVideos((prev) => prev.filter((v) => v.id !== id));
-  };
-
-  // PDF operations
-  const handleAddPdf = (pdf: Omit<PdfDocument, 'id'>) => {
-    const newPdf: PdfDocument = { ...pdf, id: `pdf-${Date.now()}` };
-    setPdfDocuments((prev) => [newPdf, ...prev]);
-  };
-
-  const handleDeletePdf = (id: string) => {
-    setPdfDocuments((prev) => prev.filter((p) => p.id !== id));
-  };
-
   // Admin Officer Operations
   const handleInviteAdmin = async (officer: {
     name: string;
@@ -424,7 +410,7 @@ export default function App() {
       const created = await createAdminOfficer(adminToken, {
         name: officer.name,
         email: officer.email,
-        password: officer.password || 'Dharohar@2026',
+        password: officer.password || 'OurDharohar@2026',
         role: officer.role || 'editor',
         stateId: officer.stateId,
         cityId: officer.cityId,
@@ -439,15 +425,10 @@ export default function App() {
 
   const handleEditOfficer = async (officer: AdminOfficer) => {
     if (!adminToken) return;
-    const roleMapping: Record<string, 'super_admin' | 'editor' | 'reviewer'> = {
-      'Super Admin': 'super_admin',
-      'Circle Admin': 'editor',
-      'Archival Auditor': 'reviewer',
-    };
     try {
       const updated = await updateAdminOfficer(adminToken, officer.id, {
         name: officer.name,
-        role: roleMapping[officer.role] || 'editor',
+        role: officer.role,
         active: officer.status === 'Active',
       });
       setOfficers((prev) => prev.map((o) => (o.id === officer.id ? updated : o)));
@@ -468,11 +449,8 @@ export default function App() {
 
   const handleNavigate = (view: ViewType, sectionSlug?: string) => {
     if (view === 'section' && sectionSlug) {
-      setSelectedSection(sectionSlug);
-      setEditingPlace(null);
-      setCurrentView('section');
-    } else if (view === 'popular-places') {
-      setSelectedSection('popular-places');
+      const canonical = resolveCategorySlug(sectionSlug) || 'heritage-places';
+      setSelectedSection(canonical);
       setEditingPlace(null);
       setCurrentView('section');
     } else if (view === 'add-record') {
@@ -489,7 +467,7 @@ export default function App() {
     setAdminToken(token);
     setIsAuthenticated(true);
     setCurrentView('dashboard');
-    setAuthToast(`Welcome back, ${officerName}. National Heritage Registry session active.`);
+    setAuthToast(`Welcome back, ${officerName}. Our_Dharohar session active.`);
     setTimeout(() => setAuthToast(null), 4000);
   };
 
@@ -598,7 +576,7 @@ export default function App() {
             />
           )}
 
-          {(currentView === 'section' || currentView === 'popular-places') && (
+          {currentView === 'section' && (
             <SectionContentManager
               sectionSlug={selectedSection}
               sectionTitle={getSectionTitle(selectedSection)}
@@ -632,14 +610,8 @@ export default function App() {
               onPublish={handleSavePlaceRecord}
               selectedState={selectedState}
               selectedDistrict={selectedDistrict}
-              videos={videos}
-              onAddVideo={handleAddVideo}
-              onDeleteVideo={handleDeleteVideo}
-              onPreviewVideo={(v) => setPreviewVideo(v)}
-              pdfDocuments={pdfDocuments}
-              onAddPdf={handleAddPdf}
-              onDeletePdf={handleDeletePdf}
-              onPreviewPdf={(p) => setPreviewPdf(p)}
+              selectedDistrictId={selectedDistrictId}
+              selectedCategory={selectedSection}
               onPreviewImage={(url, title) => setPreviewImage({ isOpen: true, url, title })}
             />
           )}

@@ -553,7 +553,7 @@ Preserving 5,000 Years of Living Civilization.`;
                     {
                       id: `${site.id}-m1`,
                       title: site.name,
-                      category: 'Archival Photography',
+                      category: 'Archival Photography' as const,
                       badge: 'Official Archive',
                       duration: '',
                       image: site.image,
@@ -562,55 +562,61 @@ Preserving 5,000 Years of Living Civilization.`;
                     },
                   ]
                 : []
-              ).map((media) => (
-                <div
-                  key={media.id}
-                  onClick={() => onOpenMediaModal(media)}
-                  className="flex flex-col rounded-2xl bg-white border border-[#e2e2e2] overflow-hidden shadow-sm hover:shadow-md transition-shadow group cursor-pointer"
-                >
-                  <div className="relative h-60 w-full overflow-hidden bg-black">
-                    <img
-                      alt={media.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                      src={media.image}
-                      loading="lazy"
-                    />
-                    <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                      <div className="w-10 h-10 rounded-full bg-white/90 backdrop-blur-md flex items-center justify-center text-[#1a1c1c] group-hover:scale-110 shadow-md transition-transform">
-                        <span className="material-symbols-outlined text-[20px] text-[#a14009]">
-                          play_arrow
-                        </span>
+              ).map((media) => {
+                const isVideo = Boolean(media.videoUrl || media.category === 'Documentary Films' || media.badge === 'Video Record');
+                return (
+                  <div
+                    key={media.id}
+                    onClick={() => onOpenMediaModal(media)}
+                    className="flex flex-col rounded-2xl bg-white border border-[#e2e2e2] overflow-hidden shadow-sm hover:shadow-md transition-shadow group cursor-pointer"
+                  >
+                    <div className="relative h-60 w-full overflow-hidden bg-black">
+                      <img
+                        alt={media.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                        src={media.image}
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 bg-black/25 group-hover:bg-black/15 transition-colors flex items-center justify-center">
+                        <div className="w-11 h-11 rounded-full bg-white/90 backdrop-blur-md flex items-center justify-center text-[#1a1c1c] group-hover:scale-110 shadow-md transition-transform">
+                          <span className="material-symbols-outlined text-[22px] text-[#a14009]">
+                            {isVideo ? 'play_arrow' : 'photo_camera'}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full bg-white/90 backdrop-blur-md text-[11px] font-semibold text-[#a14009] uppercase">
-                      {media.badge}
-                    </div>
-                    {media.duration && (
-                      <div className="absolute top-3 right-3 px-2 py-0.5 rounded bg-black/80 backdrop-blur-sm text-[11px] text-white font-mono">
-                        {media.duration}
+                      <div className="absolute top-3 left-3 px-2.5 py-0.5 rounded-full bg-white/90 backdrop-blur-md text-[11px] font-semibold text-[#a14009] uppercase flex items-center gap-1">
+                        {isVideo && <span className="material-symbols-outlined text-[13px]">videocam</span>}
+                        <span>{media.badge}</span>
                       </div>
-                    )}
-                  </div>
+                      {media.duration && (
+                        <div className="absolute top-3 right-3 px-2 py-0.5 rounded bg-black/80 backdrop-blur-sm text-[11px] text-white font-mono">
+                          {media.duration}
+                        </div>
+                      )}
+                    </div>
 
-                  <div className="p-5 flex flex-col gap-2.5 flex-1 justify-between">
-                    <div className="flex flex-col gap-1.5">
-                      <h3 className="font-serif text-[18px] text-[#1a1c1c] font-semibold leading-tight group-hover:text-[#a14009] transition-colors">
-                        {media.title}
-                      </h3>
-                      <p className="text-xs text-[#444748] leading-relaxed line-clamp-2">
-                        {media.description}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between pt-3 border-t border-[#eeeeee] text-xs">
-                      <span className="text-[#444748] font-mono">{media.meta}</span>
-                      <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#a14009] text-white font-semibold hover:bg-black transition-colors shadow-2xs">
-                        <span className="material-symbols-outlined text-[16px]">visibility</span>
-                        <span>View Media</span>
-                      </button>
+                    <div className="p-5 flex flex-col gap-2.5 flex-1 justify-between">
+                      <div className="flex flex-col gap-1.5">
+                        <h3 className="font-serif text-[18px] text-[#1a1c1c] font-semibold leading-tight group-hover:text-[#a14009] transition-colors">
+                          {media.title}
+                        </h3>
+                        <p className="text-xs text-[#444748] leading-relaxed line-clamp-2">
+                          {media.description}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between pt-3 border-t border-[#eeeeee] text-xs">
+                        <span className="text-[#444748] font-mono">{media.meta}</span>
+                        <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#a14009] text-white font-semibold hover:bg-black transition-colors shadow-2xs cursor-pointer">
+                          <span className="material-symbols-outlined text-[16px]">
+                            {isVideo ? 'play_circle' : 'visibility'}
+                          </span>
+                          <span>{isVideo ? 'Play Video' : 'View Photo'}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>

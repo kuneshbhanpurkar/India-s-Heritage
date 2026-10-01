@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import {
 	createAdmin,
-	createCategory,
 	createCity,
 	createContent,
 	createDistrict,
@@ -78,6 +77,5 @@ router.get('/district-categories', listDistrictCategories);
 router.post('/district-categories', createDistrictCategory);
 router.put('/district-categories/:districtId/:categoryId', updateDistrictCategory);
 router.patch('/district-categories/:districtId/:categoryId', updateDistrictCategory);
-router.post('/categories', createCategory);
 
 export default router;
