@@ -41,6 +41,15 @@ export interface HeritageSite {
   mediaItems?: MediaItem[];
   visitorTariffs?: VisitorTariff[];
   transitOptions?: TransitOption[];
+  documents?: SiteDocument[];
+}
+
+export interface SiteDocument {
+  title: string;
+  type?: string;
+  url: string;
+  author?: string;
+  publisher?: string;
 }
 
 export interface MediaItem {

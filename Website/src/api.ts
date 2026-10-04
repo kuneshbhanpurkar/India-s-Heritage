@@ -93,6 +93,7 @@ export interface CityOverviewResponse {
     id: string;
     name: string;
     slug?: string;
+    coverImage?: string;
     coordinates?: { lat: number; lng: number };
     description?: string;
   };
@@ -224,19 +225,17 @@ export const toHeritageSite = (card: HeritageSiteCard, district?: PublicCity): H
       }))
     : fallbackMedia;
 
-  // Derive dynamic visitor tariffs
+  // Derive visitor tariffs ONLY from real admin data (no fabricated prices)
   let visitorTariffs = (card as any).visitorTariffs;
   if (!visitorTariffs || visitorTariffs.length === 0) {
     const fee = (card as any).fields?.entryFee;
+    visitorTariffs = [];
     if (fee && typeof fee === 'object') {
-      visitorTariffs = [];
       if (fee.domestic) visitorTariffs.push({ category: 'Indian Citizens', price: `₹${fee.domestic}`, highlight: true });
       if (fee.student) visitorTariffs.push({ category: 'Students', price: `₹${fee.student}` });
       if (fee.foreign) visitorTariffs.push({ category: 'Foreign Visitors', price: `₹${fee.foreign}` });
     } else if (typeof fee === 'string' && fee.trim()) {
       visitorTariffs = [{ category: 'General Entry', price: fee.startsWith('₹') ? fee : `₹${fee}`, highlight: true }];
-    } else {
-      visitorTariffs = [{ category: 'General Entry', price: '₹25', highlight: true }];
     }
   }
 
@@ -246,8 +245,8 @@ export const toHeritageSite = (card: HeritageSiteCard, district?: PublicCity): H
     subTitle: card.subTitle || '',
     category: card.category || 'Heritage',
     categoryType: sectionCategoryMap[card.section] || 'popular',
-    dynasty: card.dynasty || (card as any).fields?.builtBy || 'Indian Heritage',
-    location: district?.name || (card as any).districtName || (card as any).cityName || 'Madhya Pradesh',
+    dynasty: card.dynasty || (card as any).fields?.builtBy || '',
+    location: district?.name || (card as any).districtName || (card as any).cityName || '',
     coordinates: {
       lat: card.latitude || district?.coordinates?.lat || 0,
       lng: card.longitude || district?.coordinates?.lng || 0,
@@ -255,19 +254,21 @@ export const toHeritageSite = (card: HeritageSiteCard, district?: PublicCity): H
       mapTopPercent: '50%',
     },
     distanceKm: Number(card.distanceKm || 0),
-    distanceDisplay: card.distanceDisplay || district?.name || '',
-    rating: Number(card.rating || 4.5),
-    reviewsCount: card.reviewsCount || '1,200 reviews',
+    distanceDisplay: card.distanceDisplay || '',
+    // Only real values — 0 / '' means "not yet published" and the UI hides it
+    rating: Number(card.rating) || 0,
+    reviewsCount: card.reviewsCount || '',
     image: card.image,
     description: card.fullDescription || card.shortDescription || card.subTitle || '',
-    openingHours: card.openingHours || (card as any).fields?.timings || '09:00 AM - 05:00 PM',
-    statusBadge: 'Verified Monument',
+    openingHours: card.openingHours || (card as any).fields?.timings || '',
+    statusBadge: undefined,
     verifiedType: 'asi',
-    directionTimeMinutes: 15,
+    directionTimeMinutes: 0,
     hasAudio: mediaItems.some((m) => m.category === 'Sound & Light'),
-    builtYear: card.builtYear || (card as any).fields?.era || 'Historical',
+    builtYear: card.builtYear || (card as any).fields?.era || '',
     mediaItems,
     visitorTariffs,
-    transitOptions: [{ mode: 'Metro / Auto', detail: 'Convenient local transit available', etaMinutes: 10, fare: '₹20' }],
+    transitOptions: [],
+    documents: Array.isArray(card.documents) ? card.documents.filter((d) => d && d.url) : [],
   };
 };

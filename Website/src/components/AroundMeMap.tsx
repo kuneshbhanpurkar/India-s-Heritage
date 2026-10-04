@@ -1,13 +1,14 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { HeritageSite } from '../types';
 import { MonumentCard } from './MonumentCard';
+import { getNearby, toHeritageSite } from '../api';
 
 interface AroundMeMapProps {
   sites: HeritageSite[];
   selectedSite: HeritageSite;
   onSelectSite: (site: HeritageSite) => void;
   onViewMonograph: (site: HeritageSite) => void;
-  onGetDirections: (site: HeritageSite) => void;
+  onGetDirections: (site: HeritageSite, userCoords?: { lat: number; lng: number } | null) => void;
   favorites: string[];
   onToggleFavorite: (id: string) => void;
   onExploreCategory: (category: string) => void;
@@ -24,10 +25,22 @@ declare global {
   }
 }
 
+// ─── Constants ─────────────────────────────────────────────────────────────────
 const DEFAULT_CENTER = { lat: 22.7196, lng: 75.8577 }; // Indore Core
+const NEARBY_RADIUS_KM = 50;
 
-const isValidCoordinate = (coordinate: { lat: number; lng: number } | null | undefined) =>
-  Boolean(coordinate && Number.isFinite(coordinate.lat) && Number.isFinite(coordinate.lng) && coordinate.lat !== 0 && coordinate.lng !== 0);
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+const isValidCoordinate = (lat: number | undefined, lng: number | undefined): boolean =>
+  lat !== undefined &&
+  lng !== undefined &&
+  Number.isFinite(lat) &&
+  Number.isFinite(lng) &&
+  lat !== 0 &&
+  lng !== 0 &&
+  lat >= -90 &&
+  lat <= 90 &&
+  lng >= -180 &&
+  lng <= 180;
 
 function calculateHaversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // Earth radius in km
@@ -35,10 +48,13 @@ function calculateHaversineKm(lat1: number, lon1: number, lat2: number, lon2: nu
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(R * c * 10) / 10;
+  // Keep 3 decimal places internally — round only for display
+  return Math.round(R * c * 1000) / 1000;
 }
 
 function formatDistance(distKm: number): string {
@@ -49,16 +65,13 @@ function formatDistance(distKm: number): string {
 }
 
 const escapeHtml = (value: string) =>
-  value.replace(/[&<>'"]/g, (char) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    "'": '&#39;',
-    '"': '&quot;',
-  }[char] || char));
+  value.replace(/[&<>'"]/g, (char) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char] || char)
+  );
 
+// ─── Component ─────────────────────────────────────────────────────────────────
 export const AroundMeMap: React.FC<AroundMeMapProps> = ({
-  sites,
+  sites: propSites,
   selectedSite,
   onSelectSite,
   onViewMonograph,
@@ -75,8 +88,17 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [mapMode, setMapMode] = useState<'map' | 'terrain'>('map');
   const [isCityDropdownOpen, setIsCityDropdownOpen] = useState<boolean>(false);
+
+  // Location state — clearly separated
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [locationState, setLocationState] = useState<
+    'idle' | 'loading' | 'granted' | 'denied' | 'unavailable'
+  >('idle');
+
+  // Nearby API state
+  const [nearbySites, setNearbySites] = useState<HeritageSite[] | null>(null);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+
   const [isLeafletReady, setIsLeafletReady] = useState<boolean>(false);
 
   const carouselRef = useRef<HTMLDivElement>(null);
@@ -86,35 +108,95 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
   const userMarkerRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
 
-  const resolvedCenter = isValidCoordinate(customMapCenter) ? customMapCenter! : DEFAULT_CENTER;
+  const resolvedCenter = useMemo(
+    () =>
+      customMapCenter &&
+      isValidCoordinate(customMapCenter.lat, customMapCenter.lng)
+        ? customMapCenter
+        : DEFAULT_CENTER,
+    [customMapCenter]
+  );
 
-  // 1. Detect User's Live Geolocation
-  const locateUser = () => {
-    if ('geolocation' in navigator) {
-      setIsLocating(true);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          setUserCoords(coords);
-          setIsLocating(false);
-          if (leafletMapRef.current) {
-            leafletMapRef.current.flyTo([coords.lat, coords.lng], 14, { duration: 1.5 });
-          }
-        },
-        (err) => {
-          console.warn('Geolocation error or denied:', err);
-          setIsLocating(false);
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
+  // ─── Fetch nearby places from backend when GPS is obtained ──────────────────
+  const fetchNearby = useCallback(
+    async (lat: number, lng: number) => {
+      setNearbyLoading(true);
+      try {
+        const cards = await getNearby(lat, lng, NEARBY_RADIUS_KM);
+        const converted: HeritageSite[] = cards
+          .filter((c) => isValidCoordinate(c.latitude, c.longitude))
+          .map((c) => toHeritageSite(c));
+        setNearbySites(converted);
+      } catch (err) {
+        console.warn('getNearby failed, using district sites:', err);
+        // Don't crash — fall back to district sites already loaded
+        setNearbySites(null);
+      } finally {
+        setNearbyLoading(false);
+      }
+    },
+    []
+  );
+
+  // ─── Request user GPS location ───────────────────────────────────────────────
+  const locateUser = useCallback(() => {
+    if (!('geolocation' in navigator)) {
+      setLocationState('unavailable');
+      return;
     }
-  };
 
+    // If we already have coordinates, fly to them immediately for instant UX feedback
+    if (userCoords && leafletMapRef.current) {
+      leafletMapRef.current.flyTo([userCoords.lat, userCoords.lng], 15, { duration: 1.2 });
+    }
+
+    setLocationState('loading');
+
+    const handleSuccess = (pos: GeolocationPosition) => {
+      const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      setUserCoords(coords);
+      setLocationState('granted');
+      if (leafletMapRef.current) {
+        leafletMapRef.current.flyTo([coords.lat, coords.lng], 14, { duration: 1.5 });
+      }
+      // Fetch nearby places from backend using real coordinates
+      fetchNearby(coords.lat, coords.lng);
+    };
+
+    const handleError = (err: GeolocationPositionError) => {
+      console.warn('Geolocation high-accuracy error:', err);
+      if (err.code === 1 /* PERMISSION_DENIED */) {
+        setLocationState('denied');
+      } else {
+        // Fallback for browsers/laptops that fail high accuracy GPS lock
+        navigator.geolocation.getCurrentPosition(
+          handleSuccess,
+          (err2) => {
+            console.warn('Geolocation fallback error:', err2);
+            if (err2.code === 1) {
+              setLocationState('denied');
+            } else {
+              setLocationState('unavailable');
+            }
+          },
+          { enableHighAccuracy: false, timeout: 12000, maximumAge: 300000 }
+        );
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, {
+      enableHighAccuracy: true,
+      timeout: 8000,
+      maximumAge: 60000,
+    });
+  }, [fetchNearby, userCoords]);
+
+  // Auto-request on mount
   useEffect(() => {
     locateUser();
   }, []);
 
-  // 2. Load Leaflet CDN script & stylesheet dynamically
+  // ─── Load Leaflet CDN ────────────────────────────────────────────────────────
   useEffect(() => {
     if (window.L) {
       setIsLeafletReady(true);
@@ -144,7 +226,7 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
     }
   }, []);
 
-  // 3. Category definitions
+  // ─── Category definitions ────────────────────────────────────────────────────
   const categories = [
     { label: 'All & Popular', id: 'All', icon: 'stars' },
     { label: 'Palaces & Forts', id: 'Fort', icon: 'fort' },
@@ -154,40 +236,51 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
     { label: 'Other Heritage', id: 'Other', icon: 'nature_people' },
   ];
 
-  // 4. Calculate live distances & filter/sort sites
+  // ─── Source of truth: nearbySites (real API) > propSites (district) ──────────
+  // Only include sites with valid coordinates; no fake coords assigned
+  const baseSites = useMemo(() => {
+    const source = nearbySites ?? propSites;
+    return source.filter((site) =>
+      isValidCoordinate(site.coordinates?.lat, site.coordinates?.lng)
+    );
+  }, [nearbySites, propSites]);
+
+  // Sites without coordinates — tracked separately for transparency
+  const sitesWithoutCoords = useMemo(() => {
+    const source = nearbySites ?? propSites;
+    return source.filter(
+      (site) => !isValidCoordinate(site.coordinates?.lat, site.coordinates?.lng)
+    );
+  }, [nearbySites, propSites]);
+
+  // ─── Calculate distances (only when userCoords or baseSites change) ──────────
   const processedSites = useMemo(() => {
-    const referenceCoords = userCoords || resolvedCenter;
-
-    return sites.map((site) => {
-      let lat = site.coordinates?.lat;
-      let lng = site.coordinates?.lng;
-
-      // Fallback coordinates within cluster if missing
-      if (!isValidCoordinate({ lat, lng })) {
-        lat = resolvedCenter.lat + (Math.random() - 0.5) * 0.02;
-        lng = resolvedCenter.lng + (Math.random() - 0.5) * 0.02;
-      }
-
+    const referenceCoords = userCoords ?? resolvedCenter;
+    return baseSites.map((site) => {
+      const lat = site.coordinates.lat;
+      const lng = site.coordinates.lng;
       const dist = calculateHaversineKm(referenceCoords.lat, referenceCoords.lng, lat, lng);
-      const display = formatDistance(dist);
-
       return {
         ...site,
-        coordinates: { ...site.coordinates, lat, lng },
         distanceKm: dist,
-        distanceDisplay: display,
+        distanceDisplay: formatDistance(dist),
       };
     });
-  }, [sites, userCoords, resolvedCenter]);
+  }, [baseSites, userCoords, resolvedCenter]);
 
+  // ─── Filter + sort ───────────────────────────────────────────────────────────
   const filteredSites = useMemo(() => {
     return processedSites
       .filter((site) => {
         const matchesCategory =
           activeCategory === 'All' ||
           site.category.toLowerCase().includes(activeCategory.toLowerCase()) ||
-          (activeCategory === 'Fort' && (site.category.includes('Palace') || site.category.includes('Fort'))) ||
-          (activeCategory === 'Monument' && (site.category.includes('Monument') || site.category.includes('Haveli') || site.category.includes('Stepwell')));
+          (activeCategory === 'Fort' &&
+            (site.category.includes('Palace') || site.category.includes('Fort'))) ||
+          (activeCategory === 'Monument' &&
+            (site.category.includes('Monument') ||
+              site.category.includes('Haveli') ||
+              site.category.includes('Stepwell')));
 
         const q = searchQuery.toLowerCase().trim();
         const matchesSearch =
@@ -199,10 +292,10 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
 
         return matchesCategory && matchesSearch;
       })
-      .sort((a, b) => a.distanceKm - b.distanceKm);
+      .sort((a, b) => a.distanceKm - b.distanceKm); // nearest first
   }, [processedSites, activeCategory, searchQuery]);
 
-  // 5. Initialize Leaflet Map Instance
+  // ─── Initialize Leaflet Map ──────────────────────────────────────────────────
   useEffect(() => {
     if (!isLeafletReady || !window.L || !mapContainerRef.current) return;
 
@@ -214,15 +307,7 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
         attributionControl: false,
       });
 
-      // Layer URLs
-      const osmUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-      const esriSatelliteUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-
-      const tileLayer = window.L.tileLayer(mapMode === 'terrain' ? esriSatelliteUrl : osmUrl, {
-        maxZoom: 19,
-      }).addTo(map);
-
-      tileLayerRef.current = tileLayer;
+      // Base tiles are attached by the dedicated tile-layer effect below
       leafletMapRef.current = map;
     }
 
@@ -231,27 +316,49 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
         leafletMapRef.current.remove();
         leafletMapRef.current = null;
       }
+      tileLayerRef.current = null;
     };
   }, [isLeafletReady]);
 
-  // 6. Update Map Center & Tiles on Mode / City Change
+  // ─── Base tile layer (Street / Satellite) — swaps without moving the map ────
+  useEffect(() => {
+    const map = leafletMapRef.current;
+    if (!isLeafletReady || !map || !window.L) return;
+
+    // Remove previous base layer (if it belongs to this map instance)
+    if (tileLayerRef.current && map.hasLayer(tileLayerRef.current)) {
+      map.removeLayer(tileLayerRef.current);
+    }
+
+    let layer: any;
+    if (mapMode === 'terrain') {
+      const imagery = window.L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 19, maxNativeZoom: 18 }
+      );
+      const labels = window.L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 19, maxNativeZoom: 18 }
+      );
+      layer = window.L.layerGroup([imagery, labels]);
+    } else {
+      layer = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+      });
+    }
+
+    layer.addTo(map);
+    tileLayerRef.current = layer;
+  }, [mapMode, isLeafletReady]);
+
+  // ─── Re-center map when the selected city/district changes ──────────────────
   useEffect(() => {
     const map = leafletMapRef.current;
     if (!map || !window.L) return;
-
     map.flyTo([resolvedCenter.lat, resolvedCenter.lng], 13, { duration: 1.2 });
+  }, [resolvedCenter]);
 
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
-      const osmUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-      const esriSatelliteUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      tileLayerRef.current = window.L.tileLayer(mapMode === 'terrain' ? esriSatelliteUrl : osmUrl, {
-        maxZoom: 19,
-      }).addTo(map);
-    }
-  }, [resolvedCenter, mapMode]);
-
-  // 7. Render User Location Beacon Marker
+  // ─── User location beacon marker ─────────────────────────────────────────────
   useEffect(() => {
     const map = leafletMapRef.current;
     if (!map || !window.L || !userCoords) return;
@@ -278,18 +385,17 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
     marker.bindPopup(`
       <div style="font-family: sans-serif; font-size: 12px; padding: 2px;">
         <strong style="color: #2563eb;">📍 Your Current Location</strong>
-        <p style="margin: 4px 0 0 0; color: #64748b;">GPS Coordinates: ${userCoords.lat.toFixed(4)}° N, ${userCoords.lng.toFixed(4)}° E</p>
+        <p style="margin: 4px 0 0 0; color: #64748b;">GPS: ${userCoords.lat.toFixed(5)}° N, ${userCoords.lng.toFixed(5)}° E</p>
       </div>
     `);
     userMarkerRef.current = marker;
   }, [userCoords, isLeafletReady]);
 
-  // 8. Render Monument Markers on Leaflet Map
+  // ─── Render heritage markers on map ─────────────────────────────────────────
   useEffect(() => {
     const map = leafletMapRef.current;
     if (!map || !window.L) return;
 
-    // Clear previous monument markers
     leafletMarkersRef.current.forEach((m) => map.removeLayer(m));
     leafletMarkersRef.current = [];
 
@@ -356,7 +462,7 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
             ${escapeHtml(site.description ? site.description.slice(0, 90) + '...' : '')}
           </p>
           <div style="display: flex; gap: 6px;">
-            <a href="https://www.google.com/maps/dir/?api=1&destination=${site.coordinates.lat},${site.coordinates.lng}" target="_blank" rel="noreferrer" style="flex: 1; text-align: center; background: #a14009; color: white; text-decoration: none; font-size: 11px; font-weight: 600; padding: 6px 8px; border-radius: 6px;">
+            <a href="https://www.google.com/maps/dir/?api=1${userCoords ? `&origin=${userCoords.lat},${userCoords.lng}` : ''}&destination=${site.coordinates.lat},${site.coordinates.lng}" target="_blank" rel="noreferrer" style="flex: 1; text-align: center; background: #a14009; color: white; text-decoration: none; font-size: 11px; font-weight: 600; padding: 6px 8px; border-radius: 6px;">
               Get Directions
             </a>
           </div>
@@ -375,12 +481,15 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
 
       leafletMarkersRef.current.push(marker);
     });
-  }, [filteredSites, selectedSite, isLeafletReady]);
+  }, [filteredSites, selectedSite, isLeafletReady, userCoords]);
 
+  // ─── Card/map sync helpers ───────────────────────────────────────────────────
   const handlePinClick = (site: HeritageSite) => {
     onSelectSite(site);
     if (leafletMapRef.current) {
-      leafletMapRef.current.flyTo([site.coordinates.lat, site.coordinates.lng], 15, { duration: 1 });
+      leafletMapRef.current.flyTo([site.coordinates.lat, site.coordinates.lng], 15, {
+        duration: 1,
+      });
     }
     const idx = filteredSites.findIndex((s) => s.id === site.id);
     if (idx !== -1 && carouselRef.current) {
@@ -408,9 +517,123 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
     }
   };
 
+  // ─── Location state banner ───────────────────────────────────────────────────
+  const renderLocationBanner = () => {
+    if (locationState === 'loading') {
+      return (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white/95 backdrop-blur-md rounded-2xl px-6 py-4 shadow-2xl border border-[#e2e2e2] flex flex-col items-center gap-3 min-w-[260px]">
+          <span className="material-symbols-outlined text-blue-600 text-[36px] animate-spin">sync</span>
+          <div className="text-center">
+            <p className="font-bold text-[#1a1c1c] text-sm">Locating You…</p>
+            <p className="text-[11px] text-[#747878] mt-1">Requesting GPS access to find heritage nearby</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (locationState === 'denied') {
+      return (
+        <div className="absolute bottom-36 sm:bottom-44 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-sm bg-white/97 backdrop-blur-md rounded-2xl px-5 py-4 shadow-2xl border border-amber-200 flex flex-col gap-3">
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined text-amber-600 text-[24px] shrink-0">location_off</span>
+            <div>
+              <p className="font-bold text-[#1a1c1c] text-sm">Location Access Denied</p>
+              <p className="text-[11px] text-[#555] mt-1 leading-relaxed">
+                Location permission is required for accurate Around Me results. Places are currently sorted by {selectedDistrictName} city center. Enable location in your browser settings and retry.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={locateUser}
+            className="w-full py-2 rounded-xl bg-[#a14009] text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-[#843e1d] transition-colors cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[14px]">my_location</span>
+            Retry Location Access
+          </button>
+        </div>
+      );
+    }
+
+    if (locationState === 'unavailable') {
+      return (
+        <div className="absolute bottom-36 sm:bottom-44 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-sm bg-white/97 backdrop-blur-md rounded-2xl px-5 py-4 shadow-2xl border border-red-200 flex items-start gap-3">
+          <span className="material-symbols-outlined text-red-500 text-[24px] shrink-0">gps_off</span>
+          <div>
+            <p className="font-bold text-[#1a1c1c] text-sm">Location Unavailable</p>
+            <p className="text-[11px] text-[#555] mt-1 leading-relaxed">
+              Unable to determine your current location. Check that your device's GPS is enabled. Showing heritage places near {selectedDistrictName}.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // ─── Carousel empty states ───────────────────────────────────────────────────
+  const renderCarouselContent = () => {
+    if (locationState === 'loading') {
+      return (
+        <div className="w-full p-5 bg-white/95 backdrop-blur-md rounded-2xl border border-[#e2e2e2] text-center shadow-lg flex items-center justify-center gap-3">
+          <span className="material-symbols-outlined text-blue-600 text-[20px] animate-spin">sync</span>
+          <span className="text-sm font-semibold text-[#555]">Finding nearby heritage places…</span>
+        </div>
+      );
+    }
+
+    if (nearbyLoading) {
+      return (
+        <div className="w-full p-5 bg-white/95 backdrop-blur-md rounded-2xl border border-[#e2e2e2] text-center shadow-lg flex items-center justify-center gap-3">
+          <span className="material-symbols-outlined text-[#a14009] text-[20px] animate-spin">sync</span>
+          <span className="text-sm font-semibold text-[#555]">Loading nearby heritage places…</span>
+        </div>
+      );
+    }
+
+    if (filteredSites.length === 0) {
+      if (activeCategory !== 'All' || searchQuery) {
+        return (
+          <div className="w-full p-6 bg-white/95 backdrop-blur-md rounded-2xl border border-[#e2e2e2] text-center text-sm font-semibold text-[#555] shadow-lg">
+            No places match your filter
+            {searchQuery ? ` for "${searchQuery}"` : ''}{activeCategory !== 'All' ? ` in category "${activeCategory}"` : ''}.
+          </div>
+        );
+      }
+
+      if (locationState === 'denied' || locationState === 'unavailable') {
+        return (
+          <div className="w-full p-6 bg-white/95 backdrop-blur-md rounded-2xl border border-[#e2e2e2] text-center text-sm font-semibold text-[#555] shadow-lg">
+            No heritage places with coordinates found near {selectedDistrictName}.
+          </div>
+        );
+      }
+
+      return (
+        <div className="w-full p-6 bg-white/95 backdrop-blur-md rounded-2xl border border-[#e2e2e2] text-center text-sm font-semibold text-[#555] shadow-lg">
+          No heritage places found nearby within {NEARBY_RADIUS_KM} km.
+        </div>
+      );
+    }
+
+    return filteredSites.map((site) => (
+      <MonumentCard
+        key={site.id}
+        site={site}
+        variant="carousel"
+        isActive={selectedSite?.id === site.id}
+        isFavorite={favorites.includes(site.id)}
+        onToggleFavorite={onToggleFavorite}
+        onSelectSite={handlePinClick}
+        onViewMonograph={onViewMonograph}
+        onGetDirections={(s) => onGetDirections(s, userCoords)}
+      />
+    ));
+  };
+
   return (
     <div className="relative w-full h-[calc(100dvh-104px)] md:h-[calc(100dvh-80px)] overflow-hidden bg-[#F4F3EE] select-none">
-      {/* 1. Live Interactive Map Viewport (Leaflet + OpenStreetMap & ESRI Satellite Layers) */}
+      {/* 1. Live Interactive Map Viewport */}
       <div ref={mapContainerRef} className="absolute inset-0 w-full h-full z-0" />
 
       {/* 2. Top Floating Navigation & Search Console */}
@@ -435,7 +658,7 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
                 <span className="material-symbols-outlined text-[14px] text-[#747878]">expand_more</span>
               </button>
 
-              {/* City Dropdown Menu */}
+              {/* City Dropdown */}
               {isCityDropdownOpen && (
                 <div className="absolute left-0 mt-2 w-72 bg-white border border-[#e2e2e2] rounded-2xl shadow-2xl z-50 py-1.5 text-xs overflow-hidden animate-fadeIn">
                   <div className="px-3.5 py-2 font-bold uppercase text-[#747878] text-[10px] tracking-wider border-b border-neutral-100">
@@ -488,7 +711,7 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
               <span className="material-symbols-outlined text-[#747878] text-[20px]">search</span>
               <input
                 className="w-full bg-transparent text-[14px] text-[#1a1c1c] placeholder:text-[#747878] focus:outline-none truncate font-medium"
-                placeholder={`Search monuments, temples, stepwells in ${selectedDistrictName}...`}
+                placeholder={`Search monuments, temples, stepwells near you…`}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -504,28 +727,48 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
               )}
             </div>
 
-            {/* Live GPS Proximity Tracker Button */}
+            {/* GPS Location Button */}
             <button
               onClick={locateUser}
-              disabled={isLocating}
+              disabled={locationState === 'loading'}
               className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm shrink-0 cursor-pointer ${
-                userCoords
+                locationState === 'granted'
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : locationState === 'denied' || locationState === 'unavailable'
+                  ? 'bg-red-500 text-white hover:bg-red-600'
                   : 'bg-[#a14009] text-white hover:bg-[#843e1d]'
               }`}
-              title="Detect live GPS location & calculate closest monuments"
+              title={
+                locationState === 'granted'
+                  ? 'GPS Active — click to refresh'
+                  : locationState === 'denied'
+                  ? 'Location denied — click to retry'
+                  : 'Detect my GPS location'
+              }
             >
-              <span className={`material-symbols-outlined text-[16px] ${isLocating ? 'animate-spin' : ''}`}>
-                {isLocating ? 'sync' : 'my_location'}
+              <span
+                className={`material-symbols-outlined text-[16px] ${locationState === 'loading' ? 'animate-spin' : ''}`}
+              >
+                {locationState === 'loading'
+                  ? 'sync'
+                  : locationState === 'denied' || locationState === 'unavailable'
+                  ? 'location_off'
+                  : 'my_location'}
               </span>
               <span className="hidden sm:inline">
-                {isLocating ? 'Locating...' : userCoords ? 'GPS Live' : 'Locate Me'}
+                {locationState === 'loading'
+                  ? 'Locating…'
+                  : locationState === 'granted'
+                  ? 'GPS Live'
+                  : locationState === 'denied'
+                  ? 'Denied'
+                  : 'Locate Me'}
               </span>
             </button>
           </div>
 
-          {/* Category Filter Pills & Mode Switcher */}
-          <div className="w-full flex items-center justify-between gap-2 overflow-x-auto no-scrollbar py-0.5">
+          {/* Category Filter Pills */}
+          <div className="w-full flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
             <div className="flex items-center gap-1.5 flex-nowrap shrink-0">
               {categories.map((cat) => (
                 <button
@@ -548,33 +791,6 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
                 </button>
               ))}
             </div>
-
-            {/* GPS Readout & View Mode Toggle */}
-            <div className="hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-white/95 backdrop-blur-sm shadow-sm text-[#444748] text-[11px] shrink-0 border border-[#e2e2e2]">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="font-mono font-medium">
-                {userCoords
-                  ? `${userCoords.lat.toFixed(4)}° N, ${userCoords.lng.toFixed(4)}° E (Device GPS)`
-                  : `${resolvedCenter.lat.toFixed(4)}° N, ${resolvedCenter.lng.toFixed(4)}° E (${selectedDistrictName})`}
-              </span>
-              <div className="h-3 w-px bg-[#e2e2e2] mx-1" />
-              <button
-                onClick={() => setMapMode('map')}
-                className={`font-bold uppercase cursor-pointer ${
-                  mapMode === 'map' ? 'text-[#a14009]' : 'text-[#747878] hover:text-[#1a1c1c]'
-                }`}
-              >
-                STREET
-              </button>
-              <button
-                onClick={() => setMapMode('terrain')}
-                className={`font-bold uppercase cursor-pointer ${
-                  mapMode === 'terrain' ? 'text-[#a14009]' : 'text-[#747878] hover:text-[#1a1c1c]'
-                }`}
-              >
-                SATELLITE
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -584,15 +800,15 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
         <div className="flex flex-col bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-[#e2e2e2] overflow-hidden">
           <button
             onClick={handleResetNorth}
-            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-[#1a1c1c] hover:bg-[#f3f3f3] transition-colors cursor-pointer"
-            title="Center Map on City"
+            className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center text-[#1a1c1c] hover:bg-[#f3f3f3] transition-colors cursor-pointer"
+            title="Center Map"
           >
             <span className="material-symbols-outlined text-[20px] text-[#a14009]">explore</span>
           </button>
           <div className="w-full h-px bg-[#e2e2e2]" />
           <button
             onClick={() => handleZoom(1)}
-            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-[#1a1c1c] hover:bg-[#f3f3f3] transition-colors cursor-pointer"
+            className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center text-[#1a1c1c] hover:bg-[#f3f3f3] transition-colors cursor-pointer"
             title="Zoom In"
           >
             <span className="material-symbols-outlined text-[20px]">add</span>
@@ -600,7 +816,7 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
           <div className="w-full h-px bg-[#e2e2e2]" />
           <button
             onClick={() => handleZoom(-1)}
-            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-[#1a1c1c] hover:bg-[#f3f3f3] transition-colors cursor-pointer"
+            className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center text-[#1a1c1c] hover:bg-[#f3f3f3] transition-colors cursor-pointer"
             title="Zoom Out"
           >
             <span className="material-symbols-outlined text-[20px]">remove</span>
@@ -610,80 +826,110 @@ export const AroundMeMap: React.FC<AroundMeMapProps> = ({
         <div className="flex flex-col bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-[#e2e2e2] overflow-hidden">
           <button
             onClick={locateUser}
-            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-[#1a1c1c] hover:bg-[#f3f3f3] transition-colors cursor-pointer"
-            title="My Live Geolocation"
+            className={`w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center transition-colors cursor-pointer ${
+              locationState === 'loading'
+                ? 'bg-amber-50 text-amber-600'
+                : locationState === 'granted'
+                ? 'text-blue-600 hover:bg-blue-50'
+                : 'text-[#1a1c1c] hover:bg-[#f3f3f3]'
+            }`}
+            title={locationState === 'granted' ? 'Center to My Location' : 'Locate Me (GPS)'}
           >
-            <span className="material-symbols-outlined text-[20px] text-blue-600">my_location</span>
+            <span className={`material-symbols-outlined text-[20px] text-blue-600 ${locationState === 'loading' ? 'animate-spin' : ''}`}>
+              {locationState === 'loading' ? 'sync' : 'my_location'}
+            </span>
           </button>
           <div className="w-full h-px bg-[#e2e2e2]" />
           <button
-            onClick={() => setMapMode(mapMode === 'map' ? 'terrain' : 'map')}
-            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-[#1a1c1c] hover:bg-[#f3f3f3] transition-colors cursor-pointer"
-            title="Toggle Satellite / Map Layer"
+            onClick={() => setMapMode('map')}
+            className={`w-10 min-h-[44px] sm:w-11 sm:min-h-[46px] py-1 px-0.5 flex flex-col items-center justify-center transition-colors cursor-pointer ${
+              mapMode === 'map' ? 'bg-[#a14009] text-white' : 'text-[#444748] hover:bg-[#f3f3f3]'
+            }`}
+            title="Street Map View"
           >
-            <span className="material-symbols-outlined text-[20px] text-[#a14009]">layers</span>
+            <span className="material-symbols-outlined text-[17px] leading-none mb-0.5">map</span>
+            <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-tight leading-none text-center">Street</span>
+          </button>
+          <div className="w-full h-px bg-[#e2e2e2]" />
+          <button
+            onClick={() => setMapMode('terrain')}
+            className={`w-10 min-h-[44px] sm:w-11 sm:min-h-[46px] py-1 px-0.5 flex flex-col items-center justify-center transition-colors cursor-pointer ${
+              mapMode === 'terrain' ? 'bg-[#a14009] text-white' : 'text-[#444748] hover:bg-[#f3f3f3]'
+            }`}
+            title="Satellite Map View"
+          >
+            <span className="material-symbols-outlined text-[17px] leading-none mb-0.5">satellite_alt</span>
+            <span className="text-[8px] sm:text-[9px] font-bold uppercase tracking-tight leading-none text-center">Satellite</span>
           </button>
         </div>
       </div>
 
-      {/* 4. Bottom Docked Horizontal Carousel of Monument Cards */}
+      {/* 4. Location Status Banners (denied / unavailable / loading) */}
+      {renderLocationBanner()}
+
+      {/* 5. Bottom Docked Horizontal Carousel */}
       <div className="absolute bottom-2 sm:bottom-5 left-0 right-0 z-30 px-3 sm:px-8 md:px-12 lg:px-16 xl:px-20 flex flex-col gap-2">
-        {/* Carousel Header Proximity Summary */}
-        <div className="flex items-center justify-between">
+        {/* Carousel Header */}
+        <div className="flex items-center">
           <div className="flex items-center gap-2">
             <span className="px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-md shadow-md text-xs text-[#1a1c1c] font-bold flex items-center gap-2 border border-[#e2e2e2]">
-              <span className="w-2 h-2 rounded-full bg-[#a14009] animate-pulse" />
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  locationState === 'granted'
+                    ? 'bg-emerald-500 animate-pulse'
+                    : locationState === 'loading'
+                    ? 'bg-amber-400 animate-pulse'
+                    : 'bg-[#a14009]'
+                }`}
+              />
               <span>
-                {filteredSites.length} Verified Monuments in {selectedDistrictName}
+                {locationState === 'loading'
+                  ? 'Locating…'
+                  : `${filteredSites.length} ${locationState === 'granted' ? 'Places Near You' : `Heritage Sites in ${selectedDistrictName}`}`}
               </span>
-              <span className="text-[#a14009] font-medium hidden sm:inline">
-                • {userCoords ? 'Real-Time Live Proximity Distance' : 'Sorted by City Proximity'}
-              </span>
+              {locationState === 'granted' && userCoords && (
+                <span className="text-[#a14009] font-medium hidden sm:inline">
+                  • Sorted by Real Distance
+                </span>
+              )}
+              {sitesWithoutCoords.length > 0 && (
+                <span className="text-[#747878] font-medium hidden sm:inline text-[10px]">
+                  • {sitesWithoutCoords.length} sites without map data excluded
+                </span>
+              )}
             </span>
-          </div>
-
-          {/* Carousel Navigation Arrows */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => scrollCarousel('left')}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/95 backdrop-blur-md shadow-md text-[#1a1c1c] flex items-center justify-center hover:bg-[#f0f0f0] transition-colors border border-[#e2e2e2] cursor-pointer"
-              title="Previous Monuments"
-            >
-              <span className="material-symbols-outlined text-[20px]">chevron_left</span>
-            </button>
-            <button
-              onClick={() => scrollCarousel('right')}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/95 backdrop-blur-md shadow-md text-[#1a1c1c] flex items-center justify-center hover:bg-[#f0f0f0] transition-colors border border-[#e2e2e2] cursor-pointer"
-              title="Next Monuments"
-            >
-              <span className="material-symbols-outlined text-[20px]">chevron_right</span>
-            </button>
           </div>
         </div>
 
-        {/* Horizontal Carousel */}
-        <div
-          ref={carouselRef}
-          className="w-full flex items-stretch gap-4 overflow-x-auto pb-1 pt-0.5 no-scrollbar scroll-smooth snap-x"
-        >
-          {filteredSites.length === 0 ? (
-            <div className="w-full p-6 bg-white/95 backdrop-blur-md rounded-2xl border border-[#e2e2e2] text-center text-sm font-semibold text-[#555] shadow-lg">
-              No monuments found matching "{searchQuery}" in {selectedDistrictName}.
-            </div>
-          ) : (
-            filteredSites.map((site) => (
-              <MonumentCard
-                key={site.id}
-                site={site}
-                variant="carousel"
-                isActive={selectedSite?.id === site.id}
-                isFavorite={favorites.includes(site.id)}
-                onToggleFavorite={onToggleFavorite}
-                onSelectSite={handlePinClick}
-                onViewMonograph={onViewMonograph}
-                onGetDirections={onGetDirections}
-              />
-            ))
+        {/* Horizontal Carousel with Flanking Left / Right Navigation */}
+        <div className="relative w-full">
+          {filteredSites.length > 1 && (
+            <button
+              onClick={() => scrollCarousel('left')}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 -translate-x-1 sm:-translate-x-3 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 backdrop-blur-md shadow-xl text-[#1a1c1c] flex items-center justify-center hover:bg-[#f0f0f0] active:scale-95 transition-all border border-[#e2e2e2] cursor-pointer"
+              title="Previous Monuments"
+              aria-label="Scroll left"
+            >
+              <span className="material-symbols-outlined text-[22px]">chevron_left</span>
+            </button>
+          )}
+
+          <div
+            ref={carouselRef}
+            className="w-full flex items-stretch gap-4 overflow-x-auto pb-1 pt-0.5 no-scrollbar scroll-smooth snap-x px-2 sm:px-4"
+          >
+            {renderCarouselContent()}
+          </div>
+
+          {filteredSites.length > 1 && (
+            <button
+              onClick={() => scrollCarousel('right')}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-20 translate-x-1 sm:translate-x-3 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 backdrop-blur-md shadow-xl text-[#1a1c1c] flex items-center justify-center hover:bg-[#f0f0f0] active:scale-95 transition-all border border-[#e2e2e2] cursor-pointer"
+              title="Next Monuments"
+              aria-label="Scroll right"
+            >
+              <span className="material-symbols-outlined text-[22px]">chevron_right</span>
+            </button>
           )}
         </div>
       </div>

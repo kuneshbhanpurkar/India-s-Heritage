@@ -2,44 +2,66 @@ import React, { useEffect, useState } from 'react';
 import { HeritageSite } from '../types';
 import { getCitySections, SectionSummary, toHeritageSite } from '../api';
 import { MonumentCard } from './MonumentCard';
-import { ArrowRight, Compass, MapPin, Sparkles, RefreshCw, AlertCircle } from 'lucide-react';
+import { ArrowRight, Compass, RefreshCw, AlertCircle } from 'lucide-react';
 
 interface HomeDashboardProps {
   cityId?: string;
   cityName?: string;
+  stateName?: string;
+  stateCode?: string;
   userName?: string;
   favorites: string[];
   onToggleFavorite: (id: string) => void;
   onViewMonograph: (site: HeritageSite) => void;
   onNavigateToMap: () => void;
   onNavigateToExplore: () => void;
+  onOpenStateDistrictModal?: () => void;
   onOpenSection: (sectionSlug: string, sectionTitle: string) => void;
   coverImage?: string;
+  description?: string;
 }
+
+const DEFAULT_HERITAGE_FALLBACK =
+  'https://images.unsplash.com/photo-1590050752117-238cb0fb12b1?auto=format&fit=crop&w=1600&q=80';
 
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   cityId,
   cityName = 'Indore',
-  userName = 'Heritage Explorer',
+  stateName = 'Madhya Pradesh',
+  stateCode = 'MP',
+  userName = 'Explorer',
   favorites,
   onToggleFavorite,
   onViewMonograph,
   onNavigateToMap,
   onNavigateToExplore,
+  onOpenStateDistrictModal,
   onOpenSection,
   coverImage,
+  description,
 }) => {
   const [sections, setSections] = useState<SectionSummary[]>([]);
+  const [cityMeta, setCityMeta] = useState<{
+    id?: string;
+    name?: string;
+    coverImage?: string;
+    description?: string;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<boolean>(false);
 
   const fetchSections = async () => {
     if (!cityId) return;
     setIsLoading(true);
     setError(null);
+    setImageError(false);
     try {
       const data = await getCitySections(cityId);
       setSections(data.sections || []);
+      if (data.city) {
+        setCityMeta(data.city);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unable to load city sections');
     } finally {
@@ -51,45 +73,138 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     fetchSections();
   }, [cityId]);
 
+  // Safe fallback chain for dynamic district cover image
+  const firstSectionItem = sections.flatMap((s) => s.items || []).find((it) => it.image);
+
+  const rawImage =
+    cityMeta?.coverImage?.trim() ||
+    coverImage?.trim() ||
+    firstSectionItem?.image ||
+    DEFAULT_HERITAGE_FALLBACK;
+
+  const displayImage = imageError ? DEFAULT_HERITAGE_FALLBACK : rawImage;
+
+  // Dynamic label for top-right glass badge
+  const imageLabelTitle =
+    !cityMeta?.coverImage?.trim() && !coverImage?.trim() && firstSectionItem?.title
+      ? firstSectionItem.title
+      : `${cityName === 'Indore' ? 'Rajwada Palace' : `${cityName} Landmark`}`;
+
+  // Personalized greeting name
+  const greetingName = userName?.trim() ? userName.trim().split(' ')[0] : 'Explorer';
+
+  // Description text
+  const heroDescription =
+    cityMeta?.description?.trim() ||
+    description?.trim() ||
+    'Explore historic places, living traditions, food, festivals and stories waiting to be explored.';
+
   return (
     <div className="space-y-12 pb-20 animate-fade-in">
-      {/* Hero Welcome Banner */}
-      <section className="relative overflow-hidden rounded-3xl bg-surface-variant/40 border border-border/60 shadow-sm p-6 sm:p-10">
-        <div className="relative z-10 max-w-3xl">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-semibold uppercase tracking-wider mb-4">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Official Heritage Jurisdiction</span>
-          </div>
-          <h1 className="text-3xl sm:text-5xl font-serif font-bold text-foreground tracking-tight leading-tight">
-            Welcome to <span className="text-primary">{cityName}</span>, {userName}
-          </h1>
-          <p className="text-muted-foreground mt-4 text-base sm:text-lg leading-relaxed">
-            Discover centrally protected monuments, sacred temples, folk traditions, living culinary heritage, and seasonal festivals of {cityName}.
-          </p>
+      {/* ========================================================================= */}
+      {/* 1. TOP HOMEPAGE HERO / WELCOME BANNER (EXACT REFERENCE DESIGN) */}
+      {/* ========================================================================= */}
+      <section
+        className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-[#E5DACF] bg-[#F7F2EB] shadow-sm min-h-[380px] sm:min-h-[430px] lg:min-h-[460px] flex items-center"
+        data-purpose="homepage-hero-banner"
+      >
+        {/* Background Panoramic Heritage Image */}
+        <div className="absolute inset-0 w-full h-full">
+          <img
+            src={displayImage}
+            alt={`${cityName} heritage panoramic cover`}
+            onError={() => setImageError(true)}
+            className="w-full h-full object-cover object-center lg:object-right"
+            loading="eager"
+          />
 
-          <div className="flex flex-wrap items-center gap-4 mt-8">
-            <button
-              onClick={onNavigateToMap}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-95 transition-all shadow-md hover:shadow-lg active:scale-98"
-            >
-              <Compass className="w-4 h-4" />
-              <span>Explore Around Me</span>
-            </button>
-            <button
-              onClick={onNavigateToExplore}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-surface border border-border text-foreground font-medium text-sm hover:bg-surface-variant transition-colors"
-            >
-              <MapPin className="w-4 h-4 text-primary" />
-              <span>Explore Another City</span>
-            </button>
+          {/* Smooth Warm Parchment Gradient Fade into the left text content */}
+          <div className="absolute inset-0 bg-gradient-to-t sm:bg-gradient-to-r from-[#FDF9F3] from-30% via-[#FDF9F3]/95 via-50% sm:via-55% to-[#FDF9F3]/15 lg:to-transparent pointer-events-none" />
+        </div>
+
+        {/* Top-Right Glassmorphic Badge */}
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20 bg-[#201D1B]/80 backdrop-blur-md text-white px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl border border-white/15 shadow-xl flex items-center gap-2.5 sm:gap-3 pointer-events-none">
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-[#C9920D] to-[#9C6A05] flex items-center justify-center text-white text-xs sm:text-sm shrink-0 shadow-xs">
+            🏛
+          </div>
+          <div className="flex flex-col text-left">
+            <span className="font-bold text-xs sm:text-sm text-white leading-tight">
+              {imageLabelTitle}
+            </span>
+            <span className="text-[10px] sm:text-[11px] text-neutral-300 leading-tight mt-0.5">
+              {cityName}, {stateName || stateCode || 'Madhya Pradesh'}
+            </span>
           </div>
         </div>
 
-        {/* Decorative subtle background pattern */}
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-primary/5 to-transparent pointer-events-none" />
+        {/* Left Content Area */}
+        <div className="relative z-10 p-6 sm:p-10 lg:p-14 max-w-xl lg:max-w-2xl flex flex-col justify-center">
+          {/* Top Pill Badge: "Namaste, Lucky 👋" */}
+          <div className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-1 rounded-full bg-[#EFE9DF]/90 border border-[#E3D9CB] text-xs font-semibold text-[#3D332A] mb-3 sm:mb-4 w-fit shadow-2xs backdrop-blur-xs">
+            <span className="text-[13px]">🪶</span>
+            <span>Namaste, {greetingName}</span>
+            <span className="inline-block animate-bounce">👋</span>
+          </div>
+
+          {/* Main Title: "Discover the Heritage of Indore" */}
+          <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-[#1E1C1A] tracking-tight leading-[1.1]">
+            <span>Discover the Heritage of</span>
+            <span className="block font-serif text-4xl sm:text-5xl lg:text-6xl font-bold text-[#9C4212] tracking-tight leading-[1.05] mt-1 sm:mt-2">
+              {cityName}
+            </span>
+          </h1>
+
+          {/* Subtitle / Description */}
+          <p className="text-[#5C544D] text-xs sm:text-sm md:text-base leading-relaxed mt-3 sm:mt-4 mb-6 sm:mb-7 max-w-md sm:max-w-lg font-sans">
+            {heroDescription}
+          </p>
+
+          {/* Action Buttons Row */}
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-4 sm:mb-5">
+            {/* Primary Button: "Explore Indore →" */}
+            <button
+              onClick={onNavigateToExplore}
+              className="px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-[#9C4212] hover:bg-[#83360E] text-white text-xs sm:text-sm font-semibold tracking-wide shadow-md transition-all active:scale-95 flex items-center gap-2.5 cursor-pointer"
+            >
+              <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-white text-[11px]">
+                <Compass className="w-3.5 h-3.5" />
+              </span>
+              <span>Explore {cityName}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+
+            {/* Secondary Button: "Around Me" */}
+            <button
+              onClick={onNavigateToMap}
+              className="px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-transparent hover:bg-white/60 text-[#3D332A] text-xs sm:text-sm font-semibold tracking-wide border border-[#B89F88] shadow-2xs transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[17px] text-[#3D332A]">location_on</span>
+              <span>Around Me</span>
+            </button>
+          </div>
+
+          {/* Bottom Switch Link: "Explore another district →" */}
+          <div>
+            <button
+              onClick={() => {
+                if (onOpenStateDistrictModal) {
+                  onOpenStateDistrictModal();
+                } else {
+                  onNavigateToExplore();
+                }
+              }}
+              className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-[#9C4212] hover:text-[#7A320B] transition-colors cursor-pointer group"
+            >
+              <span>Explore another district</span>
+              <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+            </button>
+          </div>
+        </div>
       </section>
 
-      {/* Loading state */}
+      {/* ========================================================================= */}
+      {/* 2. LOADING STATE */}
+      {/* ========================================================================= */}
       {isLoading && (
         <div className="py-16 text-center">
           <div className="w-10 h-10 rounded-full border-3 border-primary/20 border-t-primary animate-spin mx-auto mb-3" />
@@ -97,7 +212,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </div>
       )}
 
-      {/* Error state */}
+      {/* ========================================================================= */}
+      {/* 3. ERROR STATE */}
+      {/* ========================================================================= */}
       {!isLoading && error && (
         <div className="p-8 rounded-2xl bg-destructive/10 border border-destructive/20 text-center max-w-lg mx-auto">
           <AlertCircle className="w-8 h-8 text-destructive mx-auto mb-2" />
@@ -112,7 +229,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         </div>
       )}
 
-      {/* 5 Dynamic Sections */}
+      {/* ========================================================================= */}
+      {/* 4. 5 DYNAMIC CATEGORY SECTIONS (PRESERVED UNCHANGED) */}
+      {/* ========================================================================= */}
       {!isLoading && !error && (
         <div className="space-y-16">
           {sections.map((sec) => (

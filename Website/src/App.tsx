@@ -87,6 +87,7 @@ export default function App() {
 
   const [activeMediaModal, setActiveMediaModal] = useState<MediaItem | null>(null);
   const [directionsSite, setDirectionsSite] = useState<HeritageSite | null>(null);
+  const [directionsUserCoords, setDirectionsUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isFavoritesDrawerOpen, setIsFavoritesDrawerOpen] = useState<boolean>(false);
 
   const refreshPublishedDirectory = async () => {
@@ -255,22 +256,27 @@ export default function App() {
               })
             : null;
 
-          const finalMediaItems = (Array.isArray(raw.mediaItems) && raw.mediaItems.length > 0)
-            ? raw.mediaItems
-            : (dbMediaItems || prev.mediaItems);
+          setSelectedSite((prev) => {
+            const finalMediaItems = (Array.isArray(raw.mediaItems) && raw.mediaItems.length > 0)
+              ? raw.mediaItems
+              : (dbMediaItems || prev.mediaItems);
 
-          setSelectedSite((prev) => ({
-            ...prev,
-            description: raw.fullDescription || raw.shortDescription || raw.fields?.description || prev.description,
-            subTitle: raw.subtitle || raw.fields?.subTitle || prev.subTitle,
-            location: raw.districtName || raw.cityName || raw.location || prev.location,
-            builtYear: raw.fields?.era || raw.fields?.builtYear || raw.builtYear || prev.builtYear,
-            dynasty: raw.fields?.builtBy || raw.fields?.dynasty || raw.dynasty || prev.dynasty,
-            category: raw.category || raw.fields?.category || prev.category,
-            openingHours: raw.fields?.timings || raw.fields?.openingHours || raw.openingHours || prev.openingHours,
-            visitorTariffs: (tariffs && tariffs.length > 0) ? tariffs : prev.visitorTariffs,
-            mediaItems: finalMediaItems,
-          }));
+            return {
+              ...prev,
+              description: raw.fullDescription || raw.shortDescription || raw.fields?.description || prev.description,
+              subTitle: raw.subtitle || raw.fields?.subTitle || prev.subTitle,
+              location: raw.districtName || raw.cityName || raw.location || prev.location,
+              builtYear: raw.fields?.era || raw.fields?.builtYear || raw.builtYear || prev.builtYear,
+              dynasty: raw.fields?.builtBy || raw.fields?.dynasty || raw.dynasty || prev.dynasty,
+              category: raw.category || raw.fields?.category || prev.category,
+              openingHours: raw.fields?.timings || raw.fields?.openingHours || raw.openingHours || prev.openingHours,
+              visitorTariffs: (tariffs && tariffs.length > 0) ? tariffs : prev.visitorTariffs,
+              mediaItems: finalMediaItems,
+              documents: Array.isArray(raw.documents)
+                ? raw.documents.filter((d: any) => d && d.url)
+                : prev.documents,
+            };
+          });
         }
       }
     } catch (err) {
@@ -278,12 +284,15 @@ export default function App() {
     }
   };
 
-  const handleGetDirections = (site: HeritageSite) => {
+  const handleGetDirections = (site: HeritageSite, userCoords?: { lat: number; lng: number } | null) => {
     if (!user) {
       openAuthPage('signup');
       return;
     }
     setDirectionsSite(site);
+    if (userCoords !== undefined) {
+      setDirectionsUserCoords(userCoords);
+    }
   };
 
   const handleSelectDistrict = async (
@@ -378,6 +387,8 @@ export default function App() {
                 <HomeDashboard
                   cityId={selectedDistrict.id}
                   cityName={selectedDistrict.name}
+                  stateName={selectedState.name}
+                  stateCode={selectedState.code}
                   userName={user.name}
                   coverImage={selectedDistrict.coverImage}
                   favorites={favorites}
@@ -385,6 +396,7 @@ export default function App() {
                   onViewMonograph={handleViewMonograph}
                   onNavigateToMap={() => setCurrentRoute('around-me')}
                   onNavigateToExplore={() => setCurrentRoute('explore')}
+                  onOpenStateDistrictModal={() => setIsStateDistrictModalOpen(true)}
                   onOpenSection={(slug, title) => {
                     setActiveSectionSlug(slug);
                     setActiveSectionTitle(title);
@@ -514,7 +526,11 @@ export default function App() {
       {directionsSite && (
         <DirectionsModal
           site={directionsSite}
-          onClose={() => setDirectionsSite(null)}
+          onClose={() => {
+            setDirectionsSite(null);
+            setDirectionsUserCoords(null);
+          }}
+          userCoords={directionsUserCoords}
         />
       )}
 

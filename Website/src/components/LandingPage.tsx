@@ -182,18 +182,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           {/* Clean Metric Counter Strip */}
-          <div className="grid grid-cols-3 gap-6 sm:gap-12 mt-12 pt-8 border-t border-white/10 max-w-lg w-full">
+          {/* Metric Counter Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 sm:gap-12 mt-12 pt-8 border-t border-white/10 max-w-lg w-full">
             <div className="flex flex-col items-center">
-              <span className="font-serif text-2xl sm:text-3xl font-bold text-amber-300">50+</span>
-              <span className="text-[11px] text-neutral-400 uppercase tracking-wider mt-0.5">Heritage Cities</span>
+              <span className="font-serif text-2xl sm:text-3xl font-bold text-amber-300">
+                {publishedStates.length}
+              </span>
+              <span className="text-[11px] text-neutral-400 uppercase tracking-wider mt-0.5">States &amp; UTs</span>
             </div>
             <div className="flex flex-col items-center">
-              <span className="font-serif text-2xl sm:text-3xl font-bold text-white">3,600+</span>
-              <span className="text-[11px] text-neutral-400 uppercase tracking-wider mt-0.5">Monuments</span>
+              <span className="font-serif text-2xl sm:text-3xl font-bold text-white">
+                {liveCityCards.length}
+              </span>
+              <span className="text-[11px] text-neutral-400 uppercase tracking-wider mt-0.5">Cataloged Districts</span>
             </div>
-            <div className="flex flex-col items-center">
-              <span className="font-serif text-2xl sm:text-3xl font-bold text-amber-300">42</span>
-              <span className="text-[11px] text-neutral-400 uppercase tracking-wider mt-0.5">UNESCO Sites</span>
+            <div className="flex flex-col items-center col-span-2 sm:col-span-1">
+              <span className="font-serif text-2xl sm:text-3xl font-bold text-amber-300">100%</span>
+              <span className="text-[11px] text-neutral-400 uppercase tracking-wider mt-0.5">Verified Data</span>
             </div>
           </div>
         </div>
@@ -514,7 +519,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   Spatial GIS &amp; Sites
                 </span>
                 <p className="text-xs text-neutral-600 leading-relaxed">
-                  Pinpoint 3,600+ centrally protected monuments, ancient stepwells, and fortified citadels with live radial distance and interactive maps.
+                  Pinpoint centrally protected monuments, ancient stepwells, and fortified citadels with live radial distance and interactive maps.
                 </p>
               </div>
               <button

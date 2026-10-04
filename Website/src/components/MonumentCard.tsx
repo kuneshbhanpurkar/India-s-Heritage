@@ -49,11 +49,13 @@ export const MonumentCard: React.FC<MonumentCardProps> = ({
               loading="lazy"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
-            <div className="absolute bottom-2 left-2.5 flex items-center gap-1.5 text-white text-[10px]">
-              <span className="material-symbols-outlined text-[12px] text-[#ffe088]">star</span>
-              <span className="font-bold">{site.rating}</span>
-              <span className="opacity-80">({site.reviewsCount})</span>
-            </div>
+            {site.rating > 0 && (
+              <div className="absolute bottom-2 left-2.5 flex items-center gap-1.5 text-white text-[10px]">
+                <span className="material-symbols-outlined text-[12px] text-[#ffe088]">star</span>
+                <span className="font-bold">{site.rating}</span>
+                {site.reviewsCount && <span className="opacity-80">({site.reviewsCount})</span>}
+              </div>
+            )}
           </div>
 
           {/* Titles & Favorite Button */}
@@ -62,9 +64,11 @@ export const MonumentCard: React.FC<MonumentCardProps> = ({
               <h3 className="font-serif text-[16px] text-[#1a1c1c] leading-tight font-semibold truncate">
                 {site.name}
               </h3>
-              <p className="text-[11px] text-[#a14009] font-medium mt-0.5 truncate">
-                {site.subTitle || site.dynasty}
-              </p>
+              {(site.subTitle || site.dynasty) && (
+                <p className="text-[11px] text-[#a14009] font-medium mt-0.5 truncate">
+                  {site.subTitle || site.dynasty}
+                </p>
+              )}
             </div>
             <button
               onClick={(e) => {
@@ -88,10 +92,14 @@ export const MonumentCard: React.FC<MonumentCardProps> = ({
           <div className="mt-2 flex items-center gap-2 text-[#444748] text-[10px]">
             <span className="flex items-center gap-1 text-[#a14009] font-semibold">
               <span className="material-symbols-outlined text-[12px]">near_me</span>
-              {site.distanceKm} km away
+              {site.distanceDisplay || (site.distanceKm > 0 ? `${site.distanceKm.toFixed(1)} km away` : 'Location available')}
             </span>
-            <span>•</span>
-            <span className="text-[#735c00] font-medium truncate">{site.openingHours}</span>
+            {site.openingHours && (
+              <>
+                <span>•</span>
+                <span className="text-[#735c00] font-medium truncate">{site.openingHours}</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -105,7 +113,7 @@ export const MonumentCard: React.FC<MonumentCardProps> = ({
             className="flex-1 py-1.5 px-3 rounded bg-[#a14009] hover:bg-[#7d2d00] text-white text-[11px] font-semibold flex items-center justify-center gap-1 transition-colors shadow-sm"
           >
             <span className="material-symbols-outlined text-[14px]">directions_walk</span>
-            <span>Directions ({site.directionTimeMinutes} min)</span>
+            <span>Directions{site.directionTimeMinutes > 0 ? ` (${site.directionTimeMinutes} min)` : ''}</span>
           </button>
           {site.hasAudio ? (
             <button
@@ -151,13 +159,13 @@ export const MonumentCard: React.FC<MonumentCardProps> = ({
         {/* Top Badges */}
         <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
           <span className="bg-white/90 backdrop-blur-xs text-[10px] font-semibold text-[#1a1a1a] px-2 py-0.5 rounded shadow-xs">
-            {site.verifiedType || 'ASI Verified'}
+            {site.category || 'Heritage'}
           </span>
-          <span className="bg-[#A0522D]/90 text-white text-[10px] font-medium px-2 py-0.5 rounded shadow-xs">
-            {site.location.includes('MP') || site.location.includes('Indore')
-              ? 'Madhya Pradesh'
-              : site.location}
-          </span>
+          {site.location && (
+            <span className="bg-[#A0522D]/90 text-white text-[10px] font-medium px-2 py-0.5 rounded shadow-xs">
+              {site.location}
+            </span>
+          )}
         </div>
 
         {/* Favorite Button */}
@@ -178,17 +186,21 @@ export const MonumentCard: React.FC<MonumentCardProps> = ({
           </span>
         </button>
 
-        {/* Rating Overlay */}
-        <span className="absolute bottom-2.5 right-2.5 bg-black/60 backdrop-blur-xs text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
-          ★ {site.rating}
-        </span>
+        {/* Rating Overlay (only if rating exists) */}
+        {site.rating > 0 && (
+          <span className="absolute bottom-2.5 right-2.5 bg-black/60 backdrop-blur-xs text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
+            ★ {site.rating.toFixed(1)}
+          </span>
+        )}
       </div>
 
       <div className="p-4 flex-1 flex flex-col justify-between">
         <div>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[#A0522D] block mb-1">
-            {site.dynasty}
-          </span>
+          {site.dynasty && (
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#A0522D] block mb-1">
+              {site.dynasty}
+            </span>
+          )}
           <h3 className="font-serif text-base font-bold text-[#1a1a1a] group-hover:text-[#A0522D] transition-colors mb-1.5 leading-snug">
             {site.name}
           </h3>
@@ -200,7 +212,7 @@ export const MonumentCard: React.FC<MonumentCardProps> = ({
         <div className="pt-3.5 mt-3 border-t border-[#e7e2d9]/60 flex items-center justify-between">
           <span className="text-[11px] text-[#747878] flex items-center gap-1">
             <span className="material-symbols-outlined text-[13px] text-[#A0522D]">location_on</span>
-            {site.location}
+            {site.location || 'Heritage Site'}
           </span>
           <button
             onClick={(e) => {

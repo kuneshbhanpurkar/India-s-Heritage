@@ -37,9 +37,7 @@ function toCard(item) {
 			visitorTariffs.push({ category: 'General Entry', price: fee.startsWith('₹') ? fee : `₹${fee}`, highlight: true });
 		}
 	}
-	if (visitorTariffs.length === 0) {
-		visitorTariffs = [{ category: 'General Entry', price: '₹25', highlight: true }];
-	}
+	// NOTE: No fabricated fallback tariff. Empty array = not yet published by admin.
 
 	// Map all DB media items to frontend MediaItem shape
 	const mediaItems = mediaArr.map((m, idx) => ({
@@ -68,11 +66,12 @@ function toCard(item) {
 		subTitle: item.subtitle || fields.subTitle || '',
 		shortDescription: item.shortDescription || fields.description || '',
 		fullDescription: item.fullDescription || fields.fullDescription || '',
-		rating: Number(fields.rating || 4.8),
-		reviewsCount: fields.reviewsCount || '120 reviews',
+		// Only real admin-provided values; empty/0 means "not yet available"
+		rating: Number(fields.rating) || 0,
+		reviewsCount: fields.reviewsCount || '',
 		builtYear: fields.builtYear || fields.era || '',
 		dynasty: fields.dynasty || fields.builtBy || '',
-		openingHours: fields.timings || fields.openingHours || '9:00 AM - 6:00 PM',
+		openingHours: fields.timings || fields.openingHours || '',
 		visitorTariffs,
 		distanceKm: Number(fields.distanceKm || 0),
 		distanceDisplay: fields.distanceDisplay || '',
@@ -193,7 +192,17 @@ export async function getCitySections(req, res) {
 			})
 		);
 
-		return res.json({ city: { id: city._id.toString(), name: city.name }, sections: sectionResults });
+		return res.json({
+			city: {
+				id: city._id.toString(),
+				name: city.name,
+				slug: city.slug,
+				coverImage: city.coverImage || '',
+				description: city.description || '',
+				coordinates: city.coordinates || { lat: 0, lng: 0 },
+			},
+			sections: sectionResults,
+		});
 	} catch (error) {
 		console.error('Get city sections error:', error);
 		return res.status(500).json({ error: 'Unable to load district sections' });

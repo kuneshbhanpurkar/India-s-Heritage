@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PageRoute } from '../types';
 
 interface FooterProps {
@@ -6,6 +6,13 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
+  const [footerToast, setFooterToast] = useState<string | null>(null);
+
+  const handleInfoClick = (title: string) => {
+    setFooterToast(`${title} document is being prepared and will be published soon.`);
+    setTimeout(() => setFooterToast(null), 3500);
+  };
+
   return (
     <footer className="w-full bg-[#fbf9f5] border-t border-[#e7e2d9]" data-purpose="editorial-footer">
       {/* Upper Status & Gazette Subbar */}
@@ -18,12 +25,9 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[#A0522D]"></span>
             </span>
             <span className="font-semibold text-[#1a1a1a] tracking-wider uppercase text-[10px] sm:text-[11px] flex items-center gap-1.5">
-              <span className="text-[#A0522D] font-serif font-bold text-xs">🏛</span> Indian Heritage
+              <span className="text-[#A0522D] font-serif font-bold text-xs">🏛</span> Dharohar
               <span className="text-[#e7e2d9] font-normal">|</span>
-              <span className="text-[#A0522D] font-medium">National Digital Repository</span>
-            </span>
-            <span className="hidden sm:inline-block bg-[#A0522D]/10 text-[#A0522D] border border-[#A0522D]/25 px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider">
-              ASI Partner
+              <span className="text-[#A0522D] font-medium">National Digital Heritage Repository</span>
             </span>
           </div>
 
@@ -33,79 +37,13 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             <span className="text-neutral-300">•</span>
             <span className="font-semibold uppercase tracking-wider text-neutral-800">Experience</span>
             <span className="text-neutral-300">•</span>
-            <span className="font-semibold uppercase tracking-wider text-amber-700">Reward</span>
-            <span className="text-neutral-300">•</span>
-            <span className="font-semibold uppercase tracking-wider text-emerald-800">Preserve</span>
+            <span className="font-semibold uppercase tracking-wider text-amber-700">Preserve</span>
           </div>
 
-          {/* Right side: Social Media Channels & Handles */}
-          <div className="flex items-center gap-3 sm:gap-4 shrink-0 text-[#555555]">
-            <span className="text-[10px] uppercase font-semibold tracking-wider text-[#555555] hidden sm:inline-block">
-              Follow Official:
-            </span>
-            <div className="flex items-center gap-2 sm:gap-3">
-              {/* X / Twitter */}
-              <a
-                href="https://twitter.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[#555555] hover:text-[#A0522D] transition text-[11px] group"
-                title="Follow on X (@IndianHeritage)"
-              >
-                <svg className="w-3.5 h-3.5 fill-current group-hover:scale-110 transition" viewBox="0 0 24 24">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                </svg>
-                <span className="text-[10px] font-medium hidden md:inline group-hover:underline">@IndianHeritage</span>
-              </a>
-              <span className="text-[#e7e2d9] text-xs">•</span>
-              {/* Instagram */}
-              <a
-                href="https://instagram.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[#555555] hover:text-[#A0522D] transition text-[11px] group"
-                title="Follow on Instagram (@IndianHeritage)"
-              >
-                <svg
-                  className="w-3.5 h-3.5 fill-none stroke-current stroke-2 group-hover:scale-110 transition"
-                  viewBox="0 0 24 24"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
-                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
-                </svg>
-                <span className="text-[10px] font-medium hidden md:inline group-hover:underline">@IndianHeritage</span>
-              </a>
-              <span className="text-[#e7e2d9] text-xs">•</span>
-              {/* YouTube */}
-              <a
-                href="https://youtube.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[#555555] hover:text-[#A0522D] transition text-[11px] group"
-                title="YouTube Channel (@MinOfCultureGoI)"
-              >
-                <svg className="w-3.5 h-3.5 fill-current group-hover:scale-110 transition" viewBox="0 0 24 24">
-                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.5 12 3.5 12 3.5s-7.505 0-9.377.55a3.016 3.016 0 0 0-2.122 2.136C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.55 9.376.55 9.376.55s7.505 0 9.377-.55a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-                </svg>
-                <span className="text-[10px] font-medium hidden md:inline group-hover:underline">@MinOfCultureGoI</span>
-              </a>
-              <span className="text-[#e7e2d9] text-xs">•</span>
-              {/* Facebook */}
-              <a
-                href="https://facebook.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[#555555] hover:text-[#A0522D] transition text-[11px] group"
-                title="Facebook Page"
-              >
-                <svg className="w-3.5 h-3.5 fill-current group-hover:scale-110 transition" viewBox="0 0 24 24">
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                </svg>
-              </a>
-            </div>
+          {/* Right side: Verification Status */}
+          <div className="flex items-center gap-2 text-xs text-[#555555]">
+            <span className="material-symbols-outlined text-[16px] text-emerald-700">verified</span>
+            <span className="text-[11px] font-medium">Verified National Heritage Archive</span>
           </div>
         </div>
       </div>
@@ -114,10 +52,10 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
       <div className="w-full px-4 sm:px-8 md:px-12 lg:px-16 xl:px-20 2xl:px-24 py-10 sm:py-12 flex flex-col md:flex-row justify-between items-center gap-6 sm:gap-8">
         <div className="flex flex-col items-center md:items-start gap-1">
           <span className="font-serif text-2xl font-bold text-[#A0522D]">
-            Indian Heritage
+            Dharohar
           </span>
           <p className="text-xs text-[#555555]">
-            Curated in collaboration with the Archaeological Survey of India (ASI) & Madhya Pradesh Tourism.
+            Preserving centuries of Indian heritage, monuments, and cultural traditions.
           </p>
         </div>
 
@@ -140,21 +78,38 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           >
             Sign In / Register
           </button>
-          <a href="#" className="hover:text-[#A0522D] transition-colors cursor-pointer">
-            Heritage Conservation By-laws
-          </a>
-          <a href="#" className="hover:text-[#A0522D] transition-colors cursor-pointer">
+          <button
+            onClick={() => handleInfoClick('Heritage Conservation By-laws')}
+            className="hover:text-[#A0522D] transition-colors cursor-pointer"
+          >
+            Conservation By-laws
+          </button>
+          <button
+            onClick={() => handleInfoClick('Visitor Accessibility')}
+            className="hover:text-[#A0522D] transition-colors cursor-pointer"
+          >
             Visitor Accessibility
-          </a>
-          <a href="#" className="hover:text-[#A0522D] transition-colors cursor-pointer">
+          </button>
+          <button
+            onClick={() => handleInfoClick('Privacy Policy')}
+            className="hover:text-[#A0522D] transition-colors cursor-pointer"
+          >
             Privacy Policy
-          </a>
+          </button>
         </div>
 
         <div className="text-xs text-[#555555] text-center md:text-right">
-          © 2024 Indian Heritage. Preserving the timeless narrative.
+          © {new Date().getFullYear()} Dharohar Digital Heritage. All rights reserved.
         </div>
       </div>
+
+      {/* Toast Notification for upcoming policy documents */}
+      {footerToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#1a1c1c] text-white px-4 py-2.5 rounded-lg text-xs shadow-lg flex items-center gap-2 animate-fadeIn">
+          <span className="material-symbols-outlined text-[16px] text-amber-400">info</span>
+          <span>{footerToast}</span>
+        </div>
+      )}
     </footer>
   );
 };
