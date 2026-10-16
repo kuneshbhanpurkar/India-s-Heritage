@@ -34,11 +34,11 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
         </button>
 
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-md overflow-hidden bg-primary/20 border border-amber-500/30 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-md overflow-hidden bg-[#470D1F] border border-amber-500/30 flex items-center justify-center">
             <img
-              alt="Our_Dharohar"
-              className="w-full h-full object-cover"
-              src="https://lh3.googleusercontent.com/aida/AEtjO1U2jpMyI0tcImM6pB9u__givfD26xwyD_V7TXjsMcs6McMh6e5XdslL9nqtnuaOO4gaX6uKcRfT8IEJW6uUlFEx5EMHdtGOBrgPjlXqQcNYw-CK6I_D7Ugx7fpAbId_2HzUcF1KDIB_633aHuU1UzACdd20sI0-4lIE3Oc79BXy2_X3aShTSEgSC4OHgPGBddXBK3EdaIpeAhGfkK2tKV3p0LrlC77lAI2QblY663Jqzapd_yVOPUCisig"
+              alt="Our Dharohar"
+              className="w-full h-full object-contain p-0.5"
+              src="/logo.png"
             />
           </div>
           <div>

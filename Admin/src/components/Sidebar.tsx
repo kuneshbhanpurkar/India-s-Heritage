@@ -74,11 +74,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="flex items-center gap-3 cursor-pointer group"
               onClick={() => onNavigate('dashboard')}
             >
-              <div className="w-10 h-10 shrink-0 rounded-lg overflow-hidden flex items-center justify-center bg-primary/20 border border-amber-500/30 shadow-md group-hover:border-amber-500/60 transition-colors">
+              <div className="w-10 h-10 shrink-0 rounded-lg overflow-hidden flex items-center justify-center bg-[#470D1F] border border-amber-500/30 shadow-md group-hover:border-amber-500/60 transition-colors">
                 <img
-                  alt="Dharohar Emblem"
-                  className="w-full h-full object-cover"
-                  src="https://lh3.googleusercontent.com/aida/AEtjO1U2jpMyI0tcImM6pB9u__givfD26xwyD_V7TXjsMcs6McMh6e5XdslL9nqtnuaOO4gaX6uKcRfT8IEJW6uUlFEx5EMHdtGOBrgPjlXqQcNYw-CK6I_D7Ugx7fpAbId_2HzUcF1KDIB_633aHuU1UzACdd20sI0-4lIE3Oc79BXy2_X3aShTSEgSC4OHgPGBddXBK3EdaIpeAhGfkK2tKV3p0LrlC77lAI2QblY663Jqzapd_yVOPUCisig"
+                  alt="Our Dharohar Emblem"
+                  className="w-full h-full object-contain p-0.5"
+                  src="/logo.png"
                 />
               </div>
               <div className="flex flex-col min-w-0">

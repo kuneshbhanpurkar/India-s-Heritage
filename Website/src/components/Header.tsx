@@ -48,11 +48,16 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => onRouteChange(user ? 'home' : 'landing')}
-            className="flex items-center gap-1.5 sm:gap-2 group text-left focus:outline-none cursor-pointer"
-            aria-label="Indian Heritage Homepage"
+            className="flex items-center gap-2 sm:gap-2.5 group text-left focus:outline-none cursor-pointer"
+            aria-label="Our Dharohar Homepage"
           >
-            <span className="font-serif text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-[#a14009] group-hover:opacity-90 transition-opacity whitespace-nowrap">
-              Indian Heritage
+            <img
+              src="/logo.png"
+              alt="Our Dharohar Emblem"
+              className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-contain shadow-xs border border-amber-500/30 group-hover:border-amber-500/60 transition-all"
+            />
+            <span className="font-serif text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-[#470D1F] group-hover:text-[#68142D] transition-colors whitespace-nowrap">
+              Our Dharohar
             </span>
           </button>
 

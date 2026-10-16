@@ -25,7 +25,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[#A0522D]"></span>
             </span>
             <span className="font-semibold text-[#1a1a1a] tracking-wider uppercase text-[10px] sm:text-[11px] flex items-center gap-1.5">
-              <span className="text-[#A0522D] font-serif font-bold text-xs">🏛</span> Dharohar
+              <img src="/logo.png" alt="Our Dharohar" className="w-3.5 h-3.5 rounded-xs object-contain" /> Our Dharohar
               <span className="text-[#e7e2d9] font-normal">|</span>
               <span className="text-[#A0522D] font-medium">National Digital Heritage Repository</span>
             </span>
@@ -50,13 +50,20 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
 
       {/* Main Bottom Footer */}
       <div className="w-full px-4 sm:px-8 md:px-12 lg:px-16 xl:px-20 2xl:px-24 py-10 sm:py-12 flex flex-col md:flex-row justify-between items-center gap-6 sm:gap-8">
-        <div className="flex flex-col items-center md:items-start gap-1">
-          <span className="font-serif text-2xl font-bold text-[#A0522D]">
-            Dharohar
-          </span>
-          <p className="text-xs text-[#555555]">
-            Preserving centuries of Indian heritage, monuments, and cultural traditions.
-          </p>
+        <div className="flex items-center gap-3">
+          <img
+            src="/logo.png"
+            alt="Our Dharohar Emblem"
+            className="w-11 h-11 rounded-xl object-contain shadow-xs border border-amber-600/30"
+          />
+          <div className="flex flex-col items-start gap-0.5">
+            <span className="font-serif text-2xl font-bold text-[#470D1F]">
+              Our Dharohar
+            </span>
+            <p className="text-xs text-[#555555]">
+              Preserving centuries of Indian heritage, monuments, and cultural traditions.
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap justify-center gap-6 text-xs text-[#555555]">

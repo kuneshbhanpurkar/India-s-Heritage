@@ -69,8 +69,8 @@ export const AdminSignInPage: React.FC<AdminSignInPageProps> = ({
       {/* Top Bar */}
       <header className="relative z-10 w-full px-6 py-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shadow-md">
-            <span className="material-symbols-outlined text-white text-xl">account_balance</span>
+          <div className="w-10 h-10 rounded-xl overflow-hidden bg-[#470D1F] border border-amber-500/40 flex items-center justify-center shadow-md">
+            <img src="/logo.png" alt="Our Dharohar" className="w-full h-full object-contain p-0.5" />
           </div>
           <div>
             <div className="text-sm font-bold tracking-tight text-white flex items-center gap-2">

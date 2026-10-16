@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { HeritageSite } from '../types';
 import { getCitySections, SectionSummary, toHeritageSite } from '../api';
 import { MonumentCard } from './MonumentCard';
+import { CategoryCarouselRow } from './CategoryCarouselRow';
 import { ArrowRight, Compass, RefreshCw, AlertCircle } from 'lucide-react';
 
 interface HomeDashboardProps {
@@ -257,29 +258,22 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 </button>
               </div>
 
-              {/* Grid or Empty */}
+              {/* Category Carousel Row with Smart Overflow Arrow Navigation */}
               {sec.items && sec.items.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {sec.items.map((card) => {
-                    const site = toHeritageSite(card, {
+                <CategoryCarouselRow
+                  items={sec.items.map((card) =>
+                    toHeritageSite(card, {
                       _id: cityId || '',
                       name: cityName,
                       stateId: '',
                       active: true,
-                    });
-                    return (
-                      <MonumentCard
-                        key={card.id || card._id}
-                        site={site}
-                        isFavorite={favorites.includes(site.id)}
-                        onSelectSite={onViewMonograph}
-                        onViewMonograph={onViewMonograph}
-                        onToggleFavorite={onToggleFavorite}
-                        onGetDirections={onViewMonograph}
-                      />
-                    );
-                  })}
-                </div>
+                    })
+                  )}
+                  favorites={favorites}
+                  onViewMonograph={onViewMonograph}
+                  onToggleFavorite={onToggleFavorite}
+                  onGetDirections={onViewMonograph}
+                />
               ) : (
                 <div className="p-8 rounded-2xl bg-surface-variant/20 border border-dashed border-border text-center text-muted-foreground text-sm">
                   No records published yet in {sec.title} for {cityName}.

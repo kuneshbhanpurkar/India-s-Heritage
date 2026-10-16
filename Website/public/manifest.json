@@ -1,6 +1,6 @@
 {
-  "name": "Dharohar — Indian Cultural Heritage",
-  "short_name": "Dharohar",
+  "name": "Our Dharohar — Indian Cultural Heritage",
+  "short_name": "Our Dharohar",
   "description": "Discover, Experience, Reward, and Preserve India's Cultural Heritage, Protected Monuments, and Living Traditions.",
   "start_url": "/",
   "scope": "/",
@@ -8,7 +8,7 @@
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#FBF9F5",
-  "theme_color": "#9C4212",
+  "theme_color": "#470D1F",
   "lang": "en-IN",
   "dir": "ltr",
   "categories": [

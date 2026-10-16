@@ -121,14 +121,14 @@ export const PwaInstallPrompt: React.FC = () => {
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <img
-              src="/icons/icon-192.png"
-              alt="Dharohar App"
-              className="w-12 h-12 rounded-xl shadow-md border border-[#D4AF37]/40 p-0.5 bg-[#9C4212]"
+              src="/logo.png"
+              alt="Our Dharohar App"
+              className="w-12 h-12 rounded-xl shadow-md border border-[#D4AF37]/50 p-0.5 bg-[#470D1F] object-contain"
             />
             <div>
               <div className="flex items-center gap-1.5">
-                <h4 className="font-semibold text-sm text-[#FBF9F5]">Dharohar App</h4>
-                <span className="text-[10px] bg-[#9C4212] text-white px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                <h4 className="font-semibold text-sm text-[#FBF9F5]">Our Dharohar</h4>
+                <span className="text-[10px] bg-[#470D1F] border border-[#D4AF37]/40 text-[#D4AF37] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
                   Mobile App
                 </span>
               </div>
@@ -151,9 +151,9 @@ export const PwaInstallPrompt: React.FC = () => {
           <button
             id="dharohar-pwa-install-btn"
             onClick={handleInstallClick}
-            className="flex-1 bg-gradient-to-r from-[#9C4212] to-[#B8531B] hover:opacity-95 text-white text-xs font-semibold py-2.5 px-4 rounded-xl shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
+            className="flex-1 bg-gradient-to-r from-[#470D1F] via-[#5D132A] to-[#7B1937] border border-[#D4AF37]/40 hover:opacity-95 text-[#FDF8E8] text-xs font-semibold py-2.5 px-4 rounded-xl shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[16px]">install_mobile</span>
+            <span className="material-symbols-outlined text-[16px] text-[#D4AF37]">install_mobile</span>
             <span>{isIOS ? 'How to Install on iPhone' : 'Install Mobile App'}</span>
           </button>
           <button
@@ -184,19 +184,19 @@ export const PwaInstallPrompt: React.FC = () => {
 
             <div className="flex items-center gap-3 mb-4">
               <img
-                src="/icons/icon-192.png"
-                alt="Dharohar"
-                className="w-12 h-12 rounded-2xl shadow bg-[#9C4212] p-0.5"
+                src="/logo.png"
+                alt="Our Dharohar"
+                className="w-12 h-12 rounded-2xl shadow bg-[#470D1F] p-0.5 object-contain border border-[#D4AF37]/40"
               />
               <div>
-                <h3 className="font-serif font-bold text-lg text-[#9C4212]">Install on iPhone / iPad</h3>
-                <p className="text-xs text-neutral-500">Add to your iOS Home Screen</p>
+                <h3 className="font-serif font-bold text-lg text-[#470D1F]">Install on iPhone / iPad</h3>
+                <p className="text-xs text-neutral-500">Add Our Dharohar to your Home Screen</p>
               </div>
             </div>
 
             <ol className="text-xs space-y-3 text-neutral-700 mb-5">
               <li className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-[#9C4212] text-white flex items-center justify-center font-bold text-[11px] shrink-0">
+                <span className="w-5 h-5 rounded-full bg-[#470D1F] text-white flex items-center justify-center font-bold text-[11px] shrink-0">
                   1
                 </span>
                 <span>
