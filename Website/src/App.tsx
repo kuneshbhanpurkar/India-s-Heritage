@@ -16,6 +16,7 @@ import { StateDistrictModal } from './components/StateDistrictModal';
 import { LandingPage } from './components/LandingPage';
 import { AuthPage } from './components/AuthPage';
 import { CitySectionPage } from './components/CitySectionPage';
+import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 
 const toStateInfo = (state: { _id: string; name: string; code: string }, districts: Array<{ _id: string; name: string; coordinates?: { lat: number; lng: number }; description?: string; coverImage?: string }>): StateInfo => ({
   id: state._id,
@@ -610,6 +611,9 @@ export default function App() {
         publishedStates={publishedStatesList}
         onSelectDistrict={handleSelectDistrict}
       />
+
+      {/* 8. PWA Mobile App Installation Prompt */}
+      <PwaInstallPrompt />
     </div>
   );
 }

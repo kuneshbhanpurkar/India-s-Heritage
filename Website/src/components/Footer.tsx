@@ -96,6 +96,13 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           >
             Privacy Policy
           </button>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('dharohar:trigger-pwa-install'))}
+            className="hover:text-[#A0522D] text-[#A0522D] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[15px]">install_mobile</span>
+            Install Mobile App
+          </button>
         </div>
 
         <div className="text-xs text-[#555555] text-center md:text-right">

@@ -2,9 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Indian Heritage — Ministry of Culture & Tourism Initiative / ASI Partner</title>
     <meta name="description" content="Discover, Experience, Reward, and Preserve India's Cultural Heritage, Protected Monuments, and Living Traditions." />
+    
+    <!-- PWA Primary Theme and Mobile Configuration -->
+    <meta name="theme-color" content="#9C4212" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Dharohar" />
+    <meta name="application-name" content="Dharohar" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Favicon and PWA Manifest -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+
     <meta property="og:title" content="Indian Heritage — Ministry of Culture & Tourism Initiative / ASI Partner" />
     <meta property="og:description" content="Discover, Experience, Reward, and Preserve India's Cultural Heritage, Protected Monuments, and Living Traditions." />
     <meta property="og:type" content="website" />
@@ -19,6 +34,20 @@
   <body class="bg-surface font-body-md text-on-surface antialiased selection:bg-secondary selection:text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Register Dharohar PWA Service Worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((reg) => {
+              console.log('[Dharohar PWA] Service Worker registered with scope:', reg.scope);
+            })
+            .catch((err) => {
+              console.warn('[Dharohar PWA] Service Worker registration failed:', err);
+            });
+        });
+      }
+    </script>
   </body>
 </html>
 

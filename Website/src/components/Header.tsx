@@ -150,6 +150,15 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('dharohar:trigger-pwa-install'))}
+                  className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border border-[#a14009]/30 text-[#a14009] hover:bg-[#a14009]/10 transition-all cursor-pointer"
+                  title="Install Mobile App"
+                >
+                  <span className="material-symbols-outlined text-[16px]">install_mobile</span>
+                  <span>Install App</span>
+                </button>
+
+                <button
                   onClick={() => onOpenAuth('signin')}
                   className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wider font-semibold px-3 sm:px-4 py-2 rounded-xl border border-[#c4c7c7] text-[#444748] hover:text-[#a14009] hover:border-[#a14009] hover:bg-[#a14009]/5 transition-all cursor-pointer"
                 >
@@ -169,6 +178,18 @@ export const Header: React.FC<HeaderProps> = ({
           ) : (
             /* AUTHENTICATED STATE: Map Switcher, Favorites, Profile Dropdown */
             <>
+              {/* Install App Quick Action */}
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('dharohar:trigger-pwa-install'))}
+                aria-label="Install Dharohar Mobile App"
+                title="Install Dharohar Mobile App (PWA)"
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#a14009]/20 text-[#a14009] hover:bg-[#a14009]/10 transition-colors text-xs font-semibold cursor-pointer"
+                type="button"
+              >
+                <span className="material-symbols-outlined text-[18px]">install_mobile</span>
+                <span className="hidden xl:inline">Install App</span>
+              </button>
+
               <button
                 onClick={() => {
                   if (onOpenStateDistrictModal) {
@@ -256,6 +277,17 @@ export const Header: React.FC<HeaderProps> = ({
                       >
                         <span className="material-symbols-outlined text-[18px]">travel_explore</span>
                         <span>Change Base City / District</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          window.dispatchEvent(new CustomEvent('dharohar:trigger-pwa-install'));
+                        }}
+                        className="w-full text-left px-4 py-2 text-xs text-[#a14009] hover:bg-[#a14009]/10 font-semibold flex items-center gap-2.5 transition-colors cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">install_mobile</span>
+                        <span>Install Dharohar App</span>
                       </button>
                     </div>
 
