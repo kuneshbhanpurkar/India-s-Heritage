@@ -35,12 +35,18 @@ export function requireAdminToken(req, res, next) {
 	const result = verifyToken(req);
 	if (result.error) return res.status(result.status).json({ error: result.error });
 
+	const role = result.payload.role;
+	const validAdminRoles = ['super_admin', 'admin', 'state_admin', 'district_admin'];
+	if (!role || !validAdminRoles.includes(role)) {
+		return res.status(403).json({ error: 'Forbidden: Admin privileges required' });
+	}
+
 	const adminId = result.payload.sub || result.payload.id || result.payload._id;
 	const adminData = {
 		...result.payload,
 		id: adminId,
 		_id: adminId,
-		role: result.payload.role || 'admin',
+		role,
 	};
 
 	req.user = adminData;

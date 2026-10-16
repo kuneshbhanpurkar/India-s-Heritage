@@ -100,17 +100,62 @@ export default function App() {
   useEffect(() => {
     const loadDirectory = async () => {
       const liveStates = await refreshPublishedDirectory();
-      const profileState = user && liveStates.find((state) => state.name.toLowerCase() === user.state.toLowerCase());
-      const activeState = profileState || (!user ? liveStates[0] : undefined);
-      const profileDistrict = activeState?.districts.find((district) => district.name.toLowerCase() === user?.district.toLowerCase());
-      const activeDistrict = profileDistrict || (!user ? activeState?.districts[0] : undefined);
+
+      const savedStateName = localStorage.getItem('dharohar_selected_state_name');
+      const savedDistrictName = localStorage.getItem('dharohar_selected_district_name');
+      const savedStateId = localStorage.getItem('dharohar_selected_state_id');
+      const savedDistrictId = localStorage.getItem('dharohar_selected_district_id');
+
+      let activeState: StateInfo | undefined;
+      let activeDistrict: DistrictInfo | undefined;
+
+      // 1. Priority: User's explicitly selected state & district from localStorage (preserved across reloads)
+      if (savedStateName || savedStateId) {
+        activeState = liveStates.find(
+          (s) => (savedStateId && s.id === savedStateId) || (savedStateName && s.name.toLowerCase() === savedStateName.toLowerCase())
+        );
+        if (activeState && (savedDistrictName || savedDistrictId)) {
+          activeDistrict = activeState.districts.find(
+            (d) => (savedDistrictId && d.id === savedDistrictId) || (savedDistrictName && d.name.toLowerCase() === savedDistrictName.toLowerCase())
+          );
+        }
+      }
+
+      // 2. Fallback: User profile's home state & district
+      if (!activeState && user?.state) {
+        activeState = liveStates.find((s) => s.name.toLowerCase() === user.state.toLowerCase());
+      }
+      if (activeState && !activeDistrict && user?.district) {
+        activeDistrict = activeState.districts.find((d) => d.name.toLowerCase() === user.district.toLowerCase());
+      }
+
+      // 3. Fallback: Default to first available state & district
+      if (!activeState) activeState = liveStates[0];
+      if (activeState && !activeDistrict) activeDistrict = activeState.districts[0];
+
       if (activeState) setSelectedState(activeState);
       if (activeState && activeDistrict) {
         setSelectedDistrict(activeDistrict);
-        const districtSites = (await getContent(activeDistrict.id)).map((item) => toHeritageSite(item, { _id: activeDistrict.id, stateId: activeState.id, name: activeDistrict.name, active: true, coordinates: activeDistrict.coordinates }));
+        // Persist to localStorage so reload stays on this district
+        localStorage.setItem('dharohar_selected_state_name', activeState.name);
+        localStorage.setItem('dharohar_selected_district_name', activeDistrict.name);
+        localStorage.setItem('dharohar_selected_state_id', activeState.id);
+        localStorage.setItem('dharohar_selected_district_id', activeDistrict.id);
+
+        const districtSites = (await getContent(activeDistrict.id)).map((item) =>
+          toHeritageSite(item, {
+            _id: activeDistrict.id,
+            stateId: activeState.id,
+            name: activeDistrict.name,
+            active: true,
+            coordinates: activeDistrict.coordinates,
+          })
+        );
         setSites(districtSites);
         if (districtSites[0]) setSelectedSite(districtSites[0]);
-      } else setSites([]);
+      } else {
+        setSites([]);
+      }
     };
     loadDirectory().catch(() => {
       setPublishedStatesList([]);
@@ -165,6 +210,10 @@ export default function App() {
     setUser(null);
     localStorage.removeItem('indian_heritage_user');
     localStorage.removeItem('indian_heritage_token');
+    localStorage.removeItem('dharohar_selected_state_name');
+    localStorage.removeItem('dharohar_selected_district_name');
+    localStorage.removeItem('dharohar_selected_state_id');
+    localStorage.removeItem('dharohar_selected_district_id');
     setUserToken(null);
     setCurrentRoute('landing');
     setWelcomeBanner(null);
@@ -189,6 +238,10 @@ export default function App() {
       matchedState.districts.find((d) => d.name.toLowerCase() === profile.district.toLowerCase());
     if (!matchedDistrict) return;
     setSelectedDistrict(matchedDistrict);
+    localStorage.setItem('dharohar_selected_state_name', matchedState.name);
+    localStorage.setItem('dharohar_selected_district_name', matchedDistrict.name);
+    localStorage.setItem('dharohar_selected_state_id', matchedState.id);
+    localStorage.setItem('dharohar_selected_district_id', matchedDistrict.id);
     getContent(matchedDistrict.id).then((items) => {
       const districtSites = items.map((item) => toHeritageSite(item, { _id: matchedDistrict.id, stateId: matchedState.id, name: matchedDistrict.name, active: true, coordinates: matchedDistrict.coordinates }));
       setSites(districtSites);
@@ -302,6 +355,11 @@ export default function App() {
   ) => {
     setSelectedState(state);
     setSelectedDistrict(district);
+    localStorage.setItem('dharohar_selected_state_name', state.name);
+    localStorage.setItem('dharohar_selected_district_name', district.name);
+    localStorage.setItem('dharohar_selected_state_id', state.id);
+    localStorage.setItem('dharohar_selected_district_id', district.id);
+
     setMapCenterCoords({ lat: district.coordinates.lat, lng: district.coordinates.lng });
     const districtSites = (await getContent(district.id)).map((item) => toHeritageSite(item, {
       _id: district.id,
@@ -315,9 +373,8 @@ export default function App() {
 
     if (action === 'map') {
       setCurrentRoute('around-me');
-    } else if (action === 'explore') {
-      setCurrentRoute('explore');
     } else {
+      // 'explore' or 'apply' redirects directly to the district's home dashboard
       setCurrentRoute('home');
     }
   };

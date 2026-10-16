@@ -1,6 +1,5 @@
 import State from '../models/State.js';
 import City from '../models/City.js';
-import Content from '../models/Content.js';
 import DistrictCategory from '../models/DistrictCategory.js';
 import {
 	CITY_SECTIONS,
@@ -9,7 +8,18 @@ import {
 	resolveCategorySlug,
 	VALID_CATEGORY_SLUGS,
 } from '../config/categoryDefinitions.js';
+import {
+	getModelForSection,
+	findContentById,
+	findOneAcross,
+	findAcross,
+	ALL_CONTENT_MODELS,
+} from '../models/content/contentRegistry.js';
 import { isValidId } from '../utils/auth.js';
+
+function escapeRegex(text) {
+	return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+}
 
 // Format item to minimal lightweight card — includes real media/video from DB
 function toCard(item) {
@@ -37,7 +47,6 @@ function toCard(item) {
 			visitorTariffs.push({ category: 'General Entry', price: fee.startsWith('₹') ? fee : `₹${fee}`, highlight: true });
 		}
 	}
-	// NOTE: No fabricated fallback tariff. Empty array = not yet published by admin.
 
 	// Map all DB media items to frontend MediaItem shape
 	const mediaItems = mediaArr.map((m, idx) => ({
@@ -66,7 +75,6 @@ function toCard(item) {
 		subTitle: item.subtitle || fields.subTitle || '',
 		shortDescription: item.shortDescription || fields.description || '',
 		fullDescription: item.fullDescription || fields.fullDescription || '',
-		// Only real admin-provided values; empty/0 means "not yet available"
 		rating: Number(fields.rating) || 0,
 		reviewsCount: fields.reviewsCount || '',
 		builtYear: fields.builtYear || fields.era || '',
@@ -135,7 +143,7 @@ export async function getCity(req, res) {
 	}
 }
 
-// 4. Get City Section Summaries (Only Enabled Sections)
+// 4. Get City Section Summaries (Only Enabled Sections, querying distinct category collections)
 export async function getCitySections(req, res) {
 	try {
 		const { cityId } = req.params;
@@ -165,21 +173,24 @@ export async function getCitySections(req, res) {
 		const enabledSections = CITY_SECTIONS.filter((section) => {
 			const slug = section.slug;
 			if (configMap.has(slug)) return configMap.get(slug) !== false;
-			return true; // Default is enabled
+			return true;
 		});
 
-		// Get content counts + preview items per enabled section
+		// Get content counts + preview items per enabled section from its isolated collection
 		const sectionResults = await Promise.all(
 			enabledSections.map(async (sec) => {
+				const Model = getModelForSection(sec.slug);
+				if (!Model) {
+					return { ...sec, totalCount: 0, items: [] };
+				}
 				const sectionQuery = {
 					cityId: city._id,
-					section: { $in: [sec.slug, ...(sec.aliases || [])] },
 					status: 'published',
 					active: { $ne: false },
 				};
 				const [total, previewItems] = await Promise.all([
-					Content.countDocuments(sectionQuery),
-					Content.find(sectionQuery)
+					Model.countDocuments(sectionQuery),
+					Model.find(sectionQuery)
 						.sort({ isFeatured: -1, createdAt: -1 })
 						.limit(4)
 						.lean(),
@@ -209,7 +220,7 @@ export async function getCitySections(req, res) {
 	}
 }
 
-// 5. Get Content for a City + Section
+// 5. Get Content for a City + Section (Isolated Collection Query)
 export async function getCitySectionContent(req, res) {
 	try {
 		const { cityId, sectionSlug } = req.params;
@@ -231,33 +242,43 @@ export async function getCitySectionContent(req, res) {
 			return res.status(400).json({ error: `Invalid category section: ${sectionSlug}` });
 		}
 
+		const Model = getModelForSection(secMeta.slug);
+		if (!Model) {
+			return res.status(400).json({ error: `No model mapped for category: ${secMeta.slug}` });
+		}
+
 		// Check if section is enabled for this district
 		const customConfig = await DistrictCategory.findOne({
 			districtId: city._id,
 			categorySlug: secMeta.slug,
 		}).lean();
 
+		const pageNum = Math.max(1, parseInt(page, 10));
+		const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10)));
+
 		if (customConfig && customConfig.enabled === false) {
-			return res.json([]); // Section disabled in this district
+			return res.json({
+				city: { id: city._id.toString(), name: city.name },
+				section: { slug: secMeta.slug, title: secMeta.title, type: secMeta.type, description: secMeta.description },
+				pagination: { page: 1, limit: limitNum, total: 0, totalPages: 0 },
+				items: [],
+			});
 		}
 
 		const query = {
 			cityId: city._id,
-			section: { $in: [secMeta.slug, ...(secMeta.aliases || [])] },
 			status: 'published',
 			active: { $ne: false },
 		};
 
 		if (search && search.trim()) {
-			query.title = { $regex: search.trim(), $options: 'i' };
+			query.title = { $regex: escapeRegex(search.trim()), $options: 'i' };
 		}
 
-		const pageNum = Math.max(1, parseInt(page, 10));
-		const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10)));
 		const skip = (pageNum - 1) * limitNum;
 		const [total, items] = await Promise.all([
-			Content.countDocuments(query),
-			Content.find(query)
+			Model.countDocuments(query),
+			Model.find(query)
 				.sort({ isFeatured: -1, createdAt: -1 })
 				.skip(skip)
 				.limit(limitNum)
@@ -276,36 +297,44 @@ export async function getCitySectionContent(req, res) {
 	}
 }
 
-// 6. Get Single Content Record by ID or Slug
+// 6. Get Single Content Record by ID or Slug across collections
 export async function getContentByIdOrSlug(req, res) {
 	try {
 		const { idOrSlug } = req.params;
-		let item = null;
+		let match = null;
 
 		if (isValidId(idOrSlug)) {
-			item = await Content.findOne({ _id: idOrSlug, status: 'published', active: { $ne: false } })
-				.populate('cityId', 'name coordinates coverImage')
-				.populate('stateId', 'name code')
-				.lean();
+			match = await findContentById(idOrSlug, {
+				populate: [
+					{ path: 'cityId', select: 'name coordinates coverImage' },
+					{ path: 'stateId', select: 'name code' },
+				],
+			});
 		}
 
-		if (!item) {
-			item = await Content.findOne({ slug: idOrSlug, status: 'published', active: { $ne: false } })
-				.populate('cityId', 'name coordinates coverImage')
-				.populate('stateId', 'name code')
-				.lean();
+		if (!match) {
+			match = await findOneAcross(
+				{ slug: idOrSlug, status: 'published', active: { $ne: false } },
+				{
+					populate: [
+						{ path: 'cityId', select: 'name coordinates coverImage' },
+						{ path: 'stateId', select: 'name code' },
+					],
+				}
+			);
 		}
 
-		if (!item) {
+		if (!match || !match.doc) {
 			return res.status(404).json({ error: 'Heritage record not found' });
 		}
 
+		const item = match.doc;
 		const canonicalSection = resolveCategorySlug(item.section) || item.section;
 		const card = toCard(item);
 
 		return res.json({
-			...card,
 			...item,
+			...card,
 			_id: item._id.toString(),
 			id: item._id.toString(),
 			name: item.title,
@@ -325,19 +354,20 @@ export async function getContentByIdOrSlug(req, res) {
 	}
 }
 
-// 7. Find Nearby Heritage Records (GeoSpatial)
+// 7. Find Nearby Heritage Records (GeoSpatial across collections, fixes km param)
 export async function findNearby(req, res) {
 	try {
-		const { lat, lng, radiusKm = 50, limit = 20 } = req.query;
+		const { lat, lng, km, radiusKm = 50, limit = 20 } = req.query;
 		if (!lat || !lng) {
 			return res.status(400).json({ error: 'Latitude and Longitude parameters are required' });
 		}
 
+		const effectiveRadiusKm = parseFloat(km || radiusKm || 50);
 		const latitude = parseFloat(lat);
 		const longitude = parseFloat(lng);
-		const maxDistanceMeters = parseFloat(radiusKm) * 1000;
+		const maxDistanceMeters = effectiveRadiusKm * 1000;
 
-		const items = await Content.find({
+		const geoQuery = {
 			status: 'published',
 			active: { $ne: false },
 			location: {
@@ -349,12 +379,20 @@ export async function findNearby(req, res) {
 					$maxDistance: maxDistanceMeters,
 				},
 			},
-		})
-			.populate('cityId', 'name')
-			.limit(parseInt(limit, 10))
-			.lean();
+		};
 
-		return res.json(items.map(toCard));
+		// Query nearby across all category collections in parallel
+		const resultsPerModel = await Promise.all(
+			ALL_CONTENT_MODELS.map(({ Model }) =>
+				Model.find(geoQuery)
+					.populate('cityId', 'name')
+					.limit(parseInt(limit, 10))
+					.lean()
+			)
+		);
+
+		const allNearby = resultsPerModel.flat().slice(0, parseInt(limit, 10));
+		return res.json(allNearby.map(toCard));
 	} catch (error) {
 		console.error('Find nearby error:', error);
 		return res.status(500).json({ error: 'Unable to query nearby places' });
@@ -372,20 +410,17 @@ export async function listContent(req, res) {
 			query.cityId = targetCityId;
 		}
 
-		const targetSection = section || categoryId;
-		if (targetSection) {
-			const canonical = resolveCategorySlug(targetSection);
-			if (canonical) {
-				const definition = CATEGORY_DEFINITIONS[canonical];
-				query.section = { $in: [canonical, ...(definition?.aliases || [])] };
-			}
-		}
-
 		if (isFeatured !== undefined) {
 			query.isFeatured = isFeatured === 'true' || isFeatured === true;
 		}
 
-		const items = await Content.find(query).sort({ isFeatured: -1, createdAt: -1 }).limit(parseInt(limit, 10)).lean();
+		const targetSection = section || categoryId;
+		const items = await findAcross(query, {
+			section: targetSection,
+			sort: { isFeatured: -1, createdAt: -1 },
+			limit: parseInt(limit, 10),
+		});
+
 		return res.json(items.map(toCard));
 	} catch (error) {
 		console.error('Public list content error:', error);
@@ -397,7 +432,7 @@ export async function listDistricts(req, res) {
 	return listCities(req, res);
 }
 
-// 9. Public List District Categories (Respects Enabled Flags)
+// 9. Public List District Categories
 export async function listDistrictCategories(req, res) {
 	try {
 		const targetDistrictId = req.params.districtId || req.params.cityId || req.query.districtId || req.query.cityId;

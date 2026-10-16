@@ -1,5 +1,4 @@
 import bcrypt from 'bcryptjs';
-import Content from '../models/Content.js';
 import City from '../models/City.js';
 import State from '../models/State.js';
 import User from '../models/User.js';
@@ -14,7 +13,20 @@ import {
 	getSectionBySlug,
 	sanitizeCategoryFields,
 } from '../config/categoryDefinitions.js';
+import {
+	getModelForSection,
+	findContentById,
+	findOneAcross,
+	findAcross,
+	countAcross,
+	isSlugTaken,
+	ALL_CONTENT_MODELS,
+} from '../models/content/contentRegistry.js';
 import { isValidId, slugify } from '../utils/auth.js';
+
+function escapeRegex(text) {
+	return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+}
 
 // Helper for audit logging
 async function logAudit(req, action, entity, entityId, summary, details = {}) {
@@ -36,7 +48,7 @@ async function logAudit(req, action, entity, entityId, summary, details = {}) {
 	}
 }
 
-// 1. List Content (Admin Filterable & Scoped)
+// 1. List Content (Admin Filterable & Scoped across distinct collections)
 export async function listContent(req, res) {
 	try {
 		const { stateId, cityId, districtId, section, status, search, page = 1, limit = 50 } = req.query;
@@ -51,33 +63,34 @@ export async function listContent(req, res) {
 			query.stateId = stateId;
 		}
 
-		if (section) {
-			const canonicalSection = resolveCategorySlug(section);
-			if (canonicalSection) {
-				const definition = CATEGORY_DEFINITIONS[canonicalSection];
-				query.section = { $in: [canonicalSection, ...(definition?.aliases || [])] };
-			}
-		}
-
 		if (status && ['draft', 'review', 'published', 'hidden', 'archived'].includes(status)) {
 			query.status = status;
 		}
 
 		if (search && search.trim()) {
-			query.title = { $regex: search.trim(), $options: 'i' };
+			query.title = { $regex: escapeRegex(search.trim()), $options: 'i' };
 		}
 
-		const skip = (Math.max(1, parseInt(page, 10)) - 1) * parseInt(limit, 10);
+		const pageNum = Math.max(1, parseInt(page, 10));
+		const limitNum = Math.max(1, parseInt(limit, 10));
+		const skip = (pageNum - 1) * limitNum;
+
+		const targetSection = section ? resolveCategorySlug(section) : undefined;
 		const [total, items] = await Promise.all([
-			Content.countDocuments(query),
-			Content.find(query)
-				.populate('cityId', 'name')
-				.populate('stateId', 'name code')
-				.sort({ createdAt: -1 })
-				.skip(skip)
-				.limit(parseInt(limit, 10))
-				.lean(),
+			countAcross(query, { section: targetSection }),
+			findAcross(query, {
+				section: targetSection,
+				sort: { createdAt: -1 },
+				skip,
+				limit: limitNum,
+				populate: [
+					{ path: 'cityId', select: 'name' },
+					{ path: 'stateId', select: 'name code' },
+				],
+			}),
 		]);
+
+		res.setHeader('X-Total-Count', total.toString());
 
 		return res.json(
 			items.map((item) => {
@@ -127,9 +140,18 @@ export async function getContent(req, res) {
 		const { id } = req.params;
 		if (!isValidId(id)) return res.status(400).json({ error: 'Invalid content ID' });
 
-		const item = await Content.findById(id).populate('cityId', 'name').populate('stateId', 'name code').lean();
-		if (!item || item.active === false) return res.status(404).json({ error: 'Content record not found' });
+		const match = await findContentById(id, {
+			populate: [
+				{ path: 'cityId', select: 'name' },
+				{ path: 'stateId', select: 'name code' },
+			],
+		});
 
+		if (!match || !match.doc || match.doc.active === false) {
+			return res.status(404).json({ error: 'Content record not found' });
+		}
+
+		const item = match.doc;
 		const canonicalSection = resolveCategorySlug(item.section) || item.section;
 
 		return res.json({
@@ -151,7 +173,7 @@ export async function getContent(req, res) {
 	}
 }
 
-// 3. Create Content
+// 3. Create Content in its dedicated Category Collection
 export async function createContent(req, res) {
 	try {
 		const {
@@ -163,7 +185,7 @@ export async function createContent(req, res) {
 			subtitle,
 			shortDescription,
 			fullDescription,
-			status = 'published',
+			status = 'draft',
 			isFeatured = false,
 			mediaEnabled = true,
 			documentsEnabled = true,
@@ -185,7 +207,17 @@ export async function createContent(req, res) {
 
 		const resolvedStateId = stateId && isValidId(stateId) ? stateId : city.stateId;
 
-		const canonicalSection = resolveCategorySlug(section) || 'heritage-places';
+		const canonicalSection = resolveCategorySlug(section);
+		if (!canonicalSection) {
+			return res.status(400).json({
+				error: `Invalid category section: "${section}". Must be one of: ${VALID_CATEGORY_SLUGS.join(', ')}`,
+			});
+		}
+
+		const Model = getModelForSection(canonicalSection);
+		if (!Model) {
+			return res.status(400).json({ error: `No collection model found for category: ${canonicalSection}` });
+		}
 
 		if (!title || title.trim().length < 2) {
 			return res.status(400).json({ error: 'Title is required (minimum 2 characters)' });
@@ -222,7 +254,7 @@ export async function createContent(req, res) {
 		const contentStatus = ['draft', 'review', 'published', 'hidden', 'archived'].includes(status) ? status : 'published';
 		const actorId = req.admin?._id || req.admin?.id;
 
-		const content = await Content.create({
+		const content = await Model.create({
 			cityId: city._id,
 			districtId: city._id,
 			stateId: resolvedStateId,
@@ -253,27 +285,33 @@ export async function createContent(req, res) {
 		logAudit(
 			req,
 			'CREATE',
-			'Content',
+			CATEGORY_DEFINITIONS[canonicalSection].modelName,
 			content._id,
-			`Created content "${content.title}" in category "${canonicalSection}"`,
-			{ title, section: canonicalSection },
+			`Created content "${content.title}" in category "${canonicalSection}" (${CATEGORY_DEFINITIONS[canonicalSection].collection})`,
+			{ title, section: canonicalSection, collection: CATEGORY_DEFINITIONS[canonicalSection].collection },
 		);
 
 		return res.status(201).json(content);
 	} catch (error) {
 		console.error('Admin create content error:', error);
-		return res.status(500).json({ error: 'Unable to create content record' });
+		return res.status(500).json({ error: error.message || 'Unable to create content record' });
 	}
 }
 
-// 4. Update Content (Updates in place, preserving ID and category scope)
+// 4. Update Content
 export async function updateContent(req, res) {
 	try {
 		const { id } = req.params;
 		if (!isValidId(id)) return res.status(400).json({ error: 'Invalid content ID' });
 
-		const existing = await Content.findById(id);
-		if (!existing || existing.active === false) return res.status(404).json({ error: 'Content record not found' });
+		const match = await findContentById(id);
+		if (!match || !match.doc || match.doc.active === false) {
+			return res.status(404).json({ error: 'Content record not found' });
+		}
+
+		const existing = match.doc;
+		const Model = match.Model;
+		const currentCategorySlug = match.slug;
 
 		const {
 			cityId,
@@ -309,8 +347,6 @@ export async function updateContent(req, res) {
 			}
 		}
 
-		// Keep canonical category
-		const currentCategorySlug = resolveCategorySlug(existing.section) || existing.section;
 		update.section = currentCategorySlug;
 		if (CATEGORY_DEFINITIONS[currentCategorySlug]) {
 			update.category = CATEGORY_DEFINITIONS[currentCategorySlug].title;
@@ -384,14 +420,16 @@ export async function updateContent(req, res) {
 			update.location = { type: 'Point', coordinates: [lng, lat] };
 		}
 
-		const updated = await Content.findByIdAndUpdate(id, { $set: update }, { new: true, runValidators: true });
+		const updated = await Model.findByIdAndUpdate(id, { $set: update }, { new: true, runValidators: true });
 
-		logAudit(req, 'UPDATE', 'Content', id, `Updated content "${updated.title}"`, { changes: Object.keys(update) });
+		logAudit(req, 'UPDATE', CATEGORY_DEFINITIONS[currentCategorySlug].modelName, id, `Updated content "${updated.title}"`, {
+			changes: Object.keys(update),
+		});
 
 		return res.json(updated);
 	} catch (error) {
 		console.error('Admin update content error:', error);
-		return res.status(500).json({ error: 'Unable to update content record' });
+		return res.status(500).json({ error: error.message || 'Unable to update content record' });
 	}
 }
 
@@ -406,20 +444,25 @@ export async function patchContentStatus(req, res) {
 			return res.status(400).json({ error: 'Invalid status. Allowed: draft, review, published, hidden, archived' });
 		}
 
+		const match = await findContentById(id);
+		if (!match || !match.doc || match.doc.active === false) {
+			return res.status(404).json({ error: 'Content record not found' });
+		}
+
 		const update = { status, updatedBy: req.admin?._id || req.admin?.id };
 		if (status === 'published') {
 			update.publishedAt = new Date();
 			update.publishedBy = req.admin?._id || req.admin?.id;
 		}
 
-		const updated = await Content.findOneAndUpdate(
+		const updated = await match.Model.findOneAndUpdate(
 			{ _id: id, active: { $ne: false } },
 			{ $set: update },
 			{ new: true },
 		);
 		if (!updated) return res.status(404).json({ error: 'Content record not found' });
 
-		logAudit(req, 'STATUS_CHANGE', 'Content', id, `Changed status of "${updated.title}" to ${status}`);
+		logAudit(req, 'STATUS_CHANGE', CATEGORY_DEFINITIONS[match.slug].modelName, id, `Changed status of "${updated.title}" to ${status}`);
 
 		return res.json({ success: true, id, status: updated.status, publishedAt: updated.publishedAt });
 	} catch (error) {
@@ -434,14 +477,19 @@ export async function deleteContent(req, res) {
 		const { id } = req.params;
 		if (!isValidId(id)) return res.status(400).json({ error: 'Invalid content ID' });
 
-		const deleted = await Content.findOneAndUpdate(
+		const match = await findContentById(id);
+		if (!match || !match.doc || match.doc.active === false) {
+			return res.status(404).json({ error: 'Content record not found' });
+		}
+
+		const deleted = await match.Model.findOneAndUpdate(
 			{ _id: id, active: { $ne: false } },
 			{ $set: { active: false, updatedBy: req.admin?._id || req.admin?.id } },
 			{ new: true },
 		);
 		if (!deleted) return res.status(404).json({ error: 'Content record not found' });
 
-		logAudit(req, 'DELETE', 'Content', id, `Soft-deleted content "${deleted.title}"`);
+		logAudit(req, 'DELETE', CATEGORY_DEFINITIONS[match.slug].modelName, id, `Soft-deleted content "${deleted.title}"`);
 
 		return res.status(204).end();
 	} catch (error) {
@@ -643,7 +691,7 @@ export async function deleteCity(req, res) {
 		const { id } = req.params;
 		if (!isValidId(id)) return res.status(400).json({ error: 'Invalid district ID' });
 
-		const recordCount = await Content.countDocuments({ cityId: id, active: { $ne: false } });
+		const recordCount = await countAcross({ cityId: id, active: { $ne: false } });
 		if (recordCount > 0) {
 			return res.status(409).json({
 				error: `Cannot delete district: it contains ${recordCount} active heritage record(s). Delete or reassign the records first.`,
@@ -794,7 +842,7 @@ export async function updateAdmin(req, res) {
 	}
 }
 
-// 10. Dashboard Summary & Comprehensive Metrics
+// 10. Dashboard Summary & Comprehensive Metrics (Aggregated efficiently per collection)
 export async function getSummary(req, res) {
 	try {
 		const { districtId, cityId } = req.query;
@@ -804,8 +852,8 @@ export async function getSummary(req, res) {
 			query.cityId = targetDistrictId;
 		}
 
-		const [content, admins, users, states, cities, customCategoryConfigs] = await Promise.all([
-			Content.find(query, 'status section cityId stateId isFeatured').lean(),
+		// Perform parallel lightweight fetches
+		const [admins, users, states, cities, customCategoryConfigs, perCollectionSummaries] = await Promise.all([
 			User.find(
 				{ role: { $in: ['admin', 'super_admin', 'editor', 'reviewer', 'state_admin', 'district_admin'] } },
 				'role active',
@@ -816,18 +864,28 @@ export async function getSummary(req, res) {
 			targetDistrictId && isValidId(targetDistrictId)
 				? DistrictCategory.find({ districtId: targetDistrictId }).lean()
 				: Promise.resolve([]),
+			Promise.all(
+				ALL_CONTENT_MODELS.map(async ({ slug, Model }) => {
+					const items = await Model.find(query, 'status cityId stateId isFeatured').lean();
+					return { slug, items };
+				})
+			),
 		]);
 
-		const contentCounts = content.reduce(
-			(acc, item) => {
-				acc.total += 1;
+		const contentCounts = { total: 0, published: 0, draft: 0, review: 0, hidden: 0, archived: 0, featured: 0 };
+		const perCategoryBreakdown = {};
+		const allContent = [];
+
+		for (const { slug, items } of perCollectionSummaries) {
+			perCategoryBreakdown[slug] = items.length;
+			for (const item of items) {
+				allContent.push(item);
+				contentCounts.total += 1;
 				const st = item.status || 'draft';
-				acc[st] = (acc[st] || 0) + 1;
-				if (item.isFeatured) acc.featured = (acc.featured || 0) + 1;
-				return acc;
-			},
-			{ total: 0, published: 0, draft: 0, review: 0, hidden: 0, archived: 0, featured: 0 },
-		);
+				contentCounts[st] = (contentCounts[st] || 0) + 1;
+				if (item.isFeatured) contentCounts.featured = (contentCounts.featured || 0) + 1;
+			}
+		}
 
 		const adminCounts = admins.reduce(
 			(acc, a) => {
@@ -843,15 +901,11 @@ export async function getSummary(req, res) {
 			{ total: 0, active: 0, superAdmins: 0, editors: 0, reviewers: 0, stateAdmins: 0, districtAdmins: 0 },
 		);
 
-		// Calculate active categories count for target district
 		let activeCategoriesCount = CITY_SECTIONS.length;
 		if (targetDistrictId && customCategoryConfigs.length > 0) {
 			const disabledCount = customCategoryConfigs.filter((c) => c.enabled === false).length;
 			activeCategoriesCount = Math.max(0, CITY_SECTIONS.length - disabledCount);
 		}
-
-		// Also fetch all content counts per district for the national ledger
-		const allContent = targetDistrictId ? await Content.find({ active: { $ne: false } }, 'cityId status').lean() : content;
 
 		const ledger = cities.map((c) => {
 			const cityContent = allContent.filter(
@@ -863,7 +917,7 @@ export async function getSummary(req, res) {
 				code: c.stateId?.code || 'IN',
 				state: c.stateId?.name || 'National',
 				district: c.name,
-				activeCategories: `${CITY_SECTIONS.length} Canonical Categories`,
+				activeCategories: `${CITY_SECTIONS.length} Canonical Collections`,
 				published: cityContent.filter((i) => i.status === 'published').length,
 				draft: cityContent.filter((i) => i.status === 'draft').length,
 				review: cityContent.filter((i) => i.status === 'review').length,
@@ -872,7 +926,6 @@ export async function getSummary(req, res) {
 			};
 		});
 
-		// Deduplicate states
 		const uniqueStateNames = new Set();
 		states.forEach((st) => {
 			if (st.name) uniqueStateNames.add(st.name.trim().toLowerCase());
@@ -882,6 +935,7 @@ export async function getSummary(req, res) {
 
 		return res.json({
 			content: contentCounts,
+			categoriesBreakdown: perCategoryBreakdown,
 			admins: adminCounts,
 			users: { active: users },
 			coverage: {

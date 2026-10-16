@@ -1027,7 +1027,8 @@ async function runAllTests() {
     // TC-SYS-006: Public Website Dynamic City Endpoint Isolation
     const publicSections = await request(`/api/public/cities/${testDistrict._id}/sections`);
     assert.strictEqual(publicSections.status, 200);
-    assert(Array.isArray(publicSections.data) && publicSections.data.length >= 5);
+    const sectionsList = Array.isArray(publicSections.data) ? publicSections.data : publicSections.data.sections;
+    assert(Array.isArray(sectionsList) && sectionsList.length >= 5);
     recordResult('system', 'TC-SYS-006', 'Public Website Dynamic City Endpoint Returns Sections', true);
   } catch (err) {
     recordResult('system', 'TC-SYS-006', 'Public Website Dynamic City Endpoint Returns Sections', false, err);
@@ -1049,6 +1050,7 @@ async function runAllTests() {
         title: 'UAT Lifecycle Monument',
         districtId: testDistrict._id,
         section: 'heritage-places',
+        status: 'draft',
         fields: { builtBy: 'Full lifecycle test author' },
       }),
     });
@@ -1076,7 +1078,8 @@ async function runAllTests() {
 
     // Check public visibility
     const publicCheck = await request(`/api/public/cities/${testDistrict._id}/sections/heritage-places`);
-    assert(Array.isArray(publicCheck.data) && publicCheck.data.some(i => i.id === uatRecordId || i._id === uatRecordId), 'Must be visible publicly');
+    const pItems = Array.isArray(publicCheck.data) ? publicCheck.data : publicCheck.data.items;
+    assert(Array.isArray(pItems) && pItems.some(i => i.id === uatRecordId || i._id === uatRecordId), 'Must be visible publicly');
 
     // 4. Hide
     const toHide = await request(`/api/admin/content/${uatRecordId}/status`, {
@@ -1089,7 +1092,8 @@ async function runAllTests() {
 
     // Check public invisibility
     const publicCheckHidden = await request(`/api/public/cities/${testDistrict._id}/sections/heritage-places`);
-    assert(Array.isArray(publicCheckHidden.data) && !publicCheckHidden.data.some(i => i.id === uatRecordId || i._id === uatRecordId), 'Hidden item must not be visible publicly');
+    const pHiddenItems = Array.isArray(publicCheckHidden.data) ? publicCheckHidden.data : publicCheckHidden.data.items;
+    assert(Array.isArray(pHiddenItems) && !pHiddenItems.some(i => i.id === uatRecordId || i._id === uatRecordId), 'Hidden item must not be visible publicly');
 
     // 5. Delete (Soft delete)
     const toDelete = await request(`/api/admin/content/${uatRecordId}`, {
@@ -1142,7 +1146,7 @@ async function runAllTests() {
 
     const c1 = await Content.create({
       title: 'District 1 Only Item',
-      slug: 'district-1-only-item',
+      slug: `district-1-only-item-${Date.now()}`,
       districtId: testDistrict._id,
       cityId: testDistrict._id,
       section: 'heritage-places',
@@ -1151,20 +1155,22 @@ async function runAllTests() {
 
     const c2 = await Content.create({
       title: 'District 2 Only Item',
-      slug: 'district-2-only-item',
+      slug: `district-2-only-item-${Date.now()}`,
       districtId: testDistrict2._id,
       cityId: testDistrict2._id,
       section: 'heritage-places',
       status: 'published',
     });
 
-    const d1Items = await request(`/api/public/cities/${testDistrict._id}/sections/heritage-places`);
-    assert(Array.isArray(d1Items.data) && d1Items.data.some(i => i.title === 'District 1 Only Item'));
-    assert(!d1Items.data.some(i => i.title === 'District 2 Only Item'));
+    const d1Res = await request(`/api/public/cities/${testDistrict._id}/sections/heritage-places`);
+    const d1Items = Array.isArray(d1Res.data) ? d1Res.data : d1Res.data.items;
+    assert(Array.isArray(d1Items) && d1Items.some(i => i.title === 'District 1 Only Item'));
+    assert(!d1Items.some(i => i.title === 'District 2 Only Item'));
 
-    const d2Items = await request(`/api/public/cities/${testDistrict2._id}/sections/heritage-places`);
-    assert(Array.isArray(d2Items.data) && d2Items.data.some(i => i.title === 'District 2 Only Item'));
-    assert(!d2Items.data.some(i => i.title === 'District 1 Only Item'));
+    const d2Res = await request(`/api/public/cities/${testDistrict2._id}/sections/heritage-places`);
+    const d2Items = Array.isArray(d2Res.data) ? d2Res.data : d2Res.data.items;
+    assert(Array.isArray(d2Items) && d2Items.some(i => i.title === 'District 2 Only Item'));
+    assert(!d2Items.some(i => i.title === 'District 1 Only Item'));
 
     await Content.findByIdAndDelete(c1._id);
     await Content.findByIdAndDelete(c2._id);

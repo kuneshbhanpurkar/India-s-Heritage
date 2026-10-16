@@ -96,7 +96,7 @@ export const StateDistrictModal: React.FC<StateDistrictModalProps> = ({
     >
       {/* Modal Card */}
       <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-[#faf9f6] border border-[#e2e2e2] rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden">
-        
+
         {/* Header: Clean & Simple */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[#e2e2e2] bg-white">
           <div className="flex items-center gap-2.5 sm:gap-3">
@@ -164,11 +164,10 @@ export const StateDistrictModal: React.FC<StateDistrictModalProps> = ({
                 <button
                   key={region}
                   onClick={() => setSelectedRegion(region)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-[#a14009] text-white shadow-xs'
-                      : 'bg-[#f4f3ee] text-[#555] hover:bg-[#eae8e0] hover:text-[#1a1c1c]'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${isActive
+                    ? 'bg-[#a14009] text-white shadow-xs'
+                    : 'bg-[#f4f3ee] text-[#555] hover:bg-[#eae8e0] hover:text-[#1a1c1c]'
+                    }`}
                 >
                   {region}
                 </button>
@@ -233,19 +232,17 @@ export const StateDistrictModal: React.FC<StateDistrictModalProps> = ({
                         <div
                           key={district.id}
                           onClick={() => handlePickCity(state, district, 'map')}
-                          className={`group relative flex items-center justify-between p-2.5 sm:p-3 rounded-xl border text-left cursor-pointer transition-all ${
-                            isCitySelected
-                              ? 'bg-[#a14009]/10 border-[#a14009] text-[#a14009] shadow-xs'
-                              : 'bg-[#faf9f6] border-[#e8e6df] hover:bg-white hover:border-[#a14009]/40 text-[#1a1c1c]'
-                          }`}
+                          className={`group relative flex items-center justify-between p-2.5 sm:p-3 rounded-xl border text-left cursor-pointer transition-all ${isCitySelected
+                            ? 'bg-[#a14009]/10 border-[#a14009] text-[#a14009] shadow-xs'
+                            : 'bg-[#faf9f6] border-[#e8e6df] hover:bg-white hover:border-[#a14009]/40 text-[#1a1c1c]'
+                            }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0 pr-2">
                             <span
-                              className={`material-symbols-outlined text-[18px] shrink-0 ${
-                                isCitySelected
-                                  ? 'text-[#a14009]'
-                                  : 'text-[#888] group-hover:text-[#a14009]'
-                              }`}
+                              className={`material-symbols-outlined text-[18px] shrink-0 ${isCitySelected
+                                ? 'text-[#a14009]'
+                                : 'text-[#888] group-hover:text-[#a14009]'
+                                }`}
                             >
                               {isCitySelected ? 'check_circle' : 'location_on'}
                             </span>
@@ -277,11 +274,10 @@ export const StateDistrictModal: React.FC<StateDistrictModalProps> = ({
                                 handlePickCity(state, district, 'map');
                               }}
                               title="Open on Interactive Map"
-                              className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition ${
-                                isCitySelected
-                                  ? 'bg-[#a14009] text-white'
-                                  : 'bg-white border border-[#e2e2e2] text-[#444] group-hover:border-[#a14009] group-hover:text-[#a14009]'
-                              }`}
+                              className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition ${isCitySelected
+                                ? 'bg-[#a14009] text-white'
+                                : 'bg-white border border-[#e2e2e2] text-[#444] group-hover:border-[#a14009] group-hover:text-[#a14009]'
+                                }`}
                             >
                               <span>Map</span>
                               <span className="material-symbols-outlined text-[12px]">map</span>
@@ -291,7 +287,7 @@ export const StateDistrictModal: React.FC<StateDistrictModalProps> = ({
                                 e.stopPropagation();
                                 handlePickCity(state, district, 'explore');
                               }}
-                              title="Browse Sites in Explore"
+                              title="Explore District Home Dashboard"
                               className="px-2 py-1 rounded-md text-[11px] font-medium bg-white border border-[#e2e2e2] text-[#555] hover:text-[#a14009] hover:border-[#a14009] transition cursor-pointer hidden sm:flex items-center"
                             >
                               Explore

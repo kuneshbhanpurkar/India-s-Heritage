@@ -6,7 +6,7 @@ import { connectDatabase, disconnectDatabase } from '../config/db.js';
 import State from '../models/State.js';
 import City from '../models/City.js';
 import Category from '../models/Category.js';
-import Content from '../models/Content.js';
+import { getModelForSection, ALL_CONTENT_MODELS } from '../models/content/contentRegistry.js';
 import User from '../models/User.js';
 import { CITY_SECTIONS } from '../config/categoryDefinitions.js';
 import { slugify } from '../utils/auth.js';
@@ -154,7 +154,7 @@ async function resetAndRebuildDatabase() {
 		const collectionNames = collections.map((c) => c.name);
 
 		// Drop old / unused collections completely
-		const collectionsToDrop = ['admins', 'districts', 'districtcategories', 'auditlogs', 'contents'];
+		const collectionsToDrop = ['admins', 'districts', 'districtcategories', 'auditlogs', 'contents', 'places'];
 		for (const col of collectionsToDrop) {
 			if (collectionNames.includes(col)) {
 				await db.dropCollection(col);
@@ -166,9 +166,9 @@ async function resetAndRebuildDatabase() {
 		await State.deleteMany({});
 		await City.deleteMany({});
 		await Category.deleteMany({});
-		await Content.deleteMany({});
+		await Promise.all(ALL_CONTENT_MODELS.map(({ Model }) => Model.deleteMany({})));
 		await User.deleteMany({});
-		console.log('  ✓ Cleared States, Cities, Categories, Contents (places), and Users');
+		console.log('  ✓ Cleared States, Cities, Categories, 5 Distinct Category Collections, and Users');
 
 		console.log('\n🏛️ Step 2: Seeding States and Cities/Districts...');
 		const stateMap = {};
@@ -532,8 +532,9 @@ async function resetAndRebuildDatabase() {
 		];
 
 		for (const doc of prototypeContents) {
-			const created = await Content.create(doc);
-			console.log(`  ✓ Content created: "${created.title}" [Section: ${created.section}, Status: ${created.status}]`);
+			const Model = getModelForSection(doc.section);
+			const created = await Model.create(doc);
+			console.log(`  ✓ Content created: "${created.title}" [Section: ${created.section}, Collection: ${Model.collection.name}, Status: ${created.status}]`);
 		}
 
 		console.log('\n======================================================');

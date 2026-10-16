@@ -143,7 +143,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           <div className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-1 rounded-full bg-[#EFE9DF]/90 border border-[#E3D9CB] text-xs font-semibold text-[#3D332A] mb-3 sm:mb-4 w-fit shadow-2xs backdrop-blur-xs">
             <span className="text-[13px]">🪶</span>
             <span>Namaste, {greetingName}</span>
-            <span className="inline-block animate-bounce">👋</span>
+            <span className="inline-block ">👋</span>
           </div>
 
           {/* Main Title: "Discover the Heritage of Indore" */}

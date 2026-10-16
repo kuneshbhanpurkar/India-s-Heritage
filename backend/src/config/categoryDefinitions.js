@@ -7,6 +7,8 @@ export const CATEGORY_DEFINITIONS = {
 	'heritage-places': {
 		slug: 'heritage-places',
 		title: 'Heritage & Places',
+		modelName: 'HeritagePlace',
+		collection: 'heritage_places',
 		type: 'place',
 		description: 'Famous monuments, landmarks, and top heritage attractions.',
 		icon: 'account_balance',
@@ -30,6 +32,8 @@ export const CATEGORY_DEFINITIONS = {
 	'hidden-places': {
 		slug: 'hidden-places',
 		title: 'Hidden Places',
+		modelName: 'HiddenPlace',
+		collection: 'hidden_places',
 		type: 'place',
 		description: 'Lesser-known heritage gems, quiet shrines, and historic trails.',
 		icon: 'explore',
@@ -49,6 +53,8 @@ export const CATEGORY_DEFINITIONS = {
 	'culture-traditions': {
 		slug: 'culture-traditions',
 		title: 'Culture & Traditions',
+		modelName: 'CultureTradition',
+		collection: 'culture_traditions',
 		type: 'culture',
 		description: 'Living traditions, regional festivals, rituals, and spiritual practices.',
 		icon: 'auto_stories',
@@ -68,6 +74,8 @@ export const CATEGORY_DEFINITIONS = {
 	'arts-folk': {
 		slug: 'arts-folk',
 		title: 'Arts & Folk',
+		modelName: 'ArtFolk',
+		collection: 'arts_folk',
 		type: 'culture',
 		description: 'Traditional performing arts, indigenous crafts, folk music, dance, and artisanal guilds.',
 		icon: 'palette',
@@ -87,6 +95,8 @@ export const CATEGORY_DEFINITIONS = {
 	'food-markets': {
 		slug: 'food-markets',
 		title: 'Food & Markets',
+		modelName: 'FoodMarket',
+		collection: 'food_markets',
 		type: 'culture',
 		description: 'Historic gastronomy, iconic local delicacies, bazaars, and traditional food markets.',
 		icon: 'restaurant',
@@ -110,6 +120,17 @@ export const VALID_CATEGORY_SLUGS = Object.keys(CATEGORY_DEFINITIONS);
 export const CITY_SECTIONS = Object.values(CATEGORY_DEFINITIONS);
 
 export const VALID_SECTION_SLUGS = VALID_CATEGORY_SLUGS;
+
+/**
+ * Display/meta fields shared by every category (ratings, distance labels).
+ * Allowed in `fields` for all 5 collections in addition to category-specific fields.
+ */
+export const COMMON_DISPLAY_FIELDS = [
+	{ name: 'rating', label: 'Rating', type: 'number', required: false },
+	{ name: 'reviewsCount', label: 'Reviews Count', type: 'text', required: false },
+	{ name: 'distanceKm', label: 'Distance (km)', type: 'number', required: false },
+	{ name: 'distanceDisplay', label: 'Distance Label', type: 'text', required: false },
+];
 
 // Mapping of legacy aliases to canonical slug
 export const LEGACY_SLUG_MAP = {
@@ -152,7 +173,7 @@ export function sanitizeCategoryFields(categorySlug, fields = {}) {
 		return {};
 	}
 
-	const allowedFieldNames = new Set(definition.fields.map((f) => f.name));
+	const allowedFieldNames = new Set([...definition.fields, ...COMMON_DISPLAY_FIELDS].map((f) => f.name));
 	const sanitized = {};
 
 	for (const [key, value] of Object.entries(fields)) {

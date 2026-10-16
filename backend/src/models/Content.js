@@ -1,146 +1,78 @@
-import mongoose from 'mongoose';
-import { VALID_CATEGORY_SLUGS, CATEGORY_DEFINITIONS } from '../config/categoryDefinitions.js';
+import {
+	CONTENT_MODELS,
+	ALL_CONTENT_MODELS,
+	getModelForSection,
+	findContentById,
+	findOneAcross,
+	findAcross,
+	countAcross,
+	isSlugTaken,
+} from './content/contentRegistry.js';
+import HeritagePlace from './content/HeritagePlace.js';
 
-const geoPointSchema = new mongoose.Schema(
-	{
-		type: { type: String, enum: ['Point'], default: 'Point' },
-		coordinates: { type: [Number] }, // [longitude, latitude]
-	},
-	{ _id: false },
-);
-
-const mediaItemSchema = new mongoose.Schema(
-	{
-		type: { type: String, enum: ['image', 'video', 'pdf', 'audio'], default: 'image' },
-		url: { type: String, default: '', trim: true },
-		alt: { type: String, default: '', trim: true },
-		title: { type: String, default: '', trim: true },
-		caption: { type: String, default: '', trim: true },
-		source: { type: String, default: '', trim: true },
-		license: { type: String, default: '', trim: true },
-		displayOrder: { type: Number, default: 0 },
-		active: { type: Boolean, default: true },
-		storageKey: { type: String, default: '' },
-	},
-	{ _id: true },
-);
-
-const documentItemSchema = new mongoose.Schema(
-	{
-		title: { type: String, default: '', trim: true },
-		type: { type: String, default: 'pdf', trim: true },
-		url: { type: String, default: '', trim: true },
-		author: { type: String, default: '', trim: true },
-		publisher: { type: String, default: '', trim: true },
-		source: { type: String, default: '', trim: true },
-		license: { type: String, default: '', trim: true },
-		displayOrder: { type: Number, default: 0 },
-		active: { type: Boolean, default: true },
-	},
-	{ _id: true },
-);
-
-const sourceItemSchema = new mongoose.Schema(
-	{
-		sourceTitle: { type: String, default: '', trim: true },
-		sourceUrl: { type: String, default: '', trim: true },
-		publisher: { type: String, default: '', trim: true },
-		attribution: { type: String, default: '', trim: true },
-		license: { type: String, default: '', trim: true },
-		verificationNotes: { type: String, default: '', trim: true },
-	},
-	{ _id: true },
-);
-
-const contentSchema = new mongoose.Schema(
-	{
-		cityId: { type: mongoose.Schema.Types.ObjectId, ref: 'City', required: true, index: true },
-		districtId: { type: mongoose.Schema.Types.ObjectId, ref: 'City' },
-		stateId: { type: mongoose.Schema.Types.ObjectId, ref: 'State', index: true },
-		section: {
-			type: String,
-			required: true,
-			index: true,
-		},
-		category: { type: String, default: 'Heritage' },
-		categoryId: { type: mongoose.Schema.Types.Mixed },
-		title: { type: String, required: true, trim: true },
-		subtitle: { type: String, default: '', trim: true },
-		slug: { type: String, required: true, trim: true },
-		shortDescription: { type: String, default: '', trim: true },
-		fullDescription: { type: String, default: '', trim: true },
-		status: {
-			type: String,
-			enum: ['draft', 'review', 'published', 'hidden', 'archived'],
-			default: 'published',
-			index: true,
-		},
-		isFeatured: { type: Boolean, default: false },
-		mediaEnabled: { type: Boolean, default: true },
-		documentsEnabled: { type: Boolean, default: true },
-		version: { type: Number, default: 1 },
-		publishedAt: { type: Date },
-		publishedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-		createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-		updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-		fields: { type: mongoose.Schema.Types.Mixed, default: {} },
-		media: [mediaItemSchema],
-		documents: [documentItemSchema],
-		sources: [sourceItemSchema],
-		location: { type: geoPointSchema },
-		latitude: { type: Number },
-		longitude: { type: Number },
-		active: { type: Boolean, default: true },
-	},
-	{ collection: 'places', timestamps: true },
-);
-
-contentSchema.index({ cityId: 1, section: 1, status: 1 });
-contentSchema.index({ stateId: 1, status: 1 });
-contentSchema.index({ location: '2dsphere' });
-contentSchema.index({ slug: 1 });
-
-// Pre-save hook to ensure districtId and lat/long stay synchronized and publishedAt is tracked
-contentSchema.pre('save', function (next) {
-	if (this.cityId && !this.districtId) {
-		this.districtId = this.cityId;
+/**
+ * Backward compatibility facade.
+ * Supports constructor instantiation (`new Content(...)`) and multi-collection lookups.
+ */
+class ContentModelWrapper {
+	constructor(data) {
+		const Model = (data?.section && getModelForSection(data.section)) || HeritagePlace;
+		return new Model(data);
 	}
-	if (this.districtId && !this.cityId) {
-		this.cityId = this.districtId;
-	}
+}
 
-	if (this.section && CATEGORY_DEFINITIONS[this.section]) {
-		this.category = CATEGORY_DEFINITIONS[this.section].title;
-	}
+const Content = ContentModelWrapper;
 
-	if (
-		this.latitude !== undefined &&
-		this.latitude !== null &&
-		this.longitude !== undefined &&
-		this.longitude !== null &&
-		!isNaN(Number(this.latitude)) &&
-		!isNaN(Number(this.longitude))
-	) {
-		const lat = Number(this.latitude);
-		const lng = Number(this.longitude);
-		if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-			this.latitude = lat;
-			this.longitude = lng;
-			this.location = {
-				type: 'Point',
-				coordinates: [lng, lat],
-			};
-		}
-	} else if (this.location?.coordinates?.length === 2) {
-		this.longitude = this.location.coordinates[0];
-		this.latitude = this.location.coordinates[1];
-	}
+Content.models = CONTENT_MODELS;
+Content.allModels = ALL_CONTENT_MODELS;
+Content.getModelForSection = getModelForSection;
+Content.schema = HeritagePlace.schema;
 
-	if (this.isModified('status') && this.status === 'published' && !this.publishedAt) {
-		this.publishedAt = new Date();
-	}
+Content.findById = async function (id, projection, options) {
+	const match = await findContentById(id, { projection, ...options });
+	return match?.doc || null;
+};
 
-	next();
-});
+Content.findOne = async function (filter, projection, options) {
+	const match = await findOneAcross(filter, { projection, ...options });
+	return match?.doc || null;
+};
 
-export default mongoose.models.Content || mongoose.model('Content', contentSchema);
+Content.find = async function (filter, projection, options) {
+	return findAcross(filter, { projection, ...options });
+};
+
+Content.countDocuments = async function (filter) {
+	return countAcross(filter);
+};
+
+Content.create = async function (doc) {
+	const Model = (doc?.section && getModelForSection(doc.section)) || HeritagePlace;
+	return Model.create(doc);
+};
+
+Content.findByIdAndDelete = async function (id) {
+	const match = await findContentById(id);
+	if (match) return match.Model.findByIdAndDelete(id);
+	return null;
+};
+
+Content.findByIdAndUpdate = async function (id, update, options) {
+	const match = await findContentById(id);
+	if (match) return match.Model.findByIdAndUpdate(id, update, options);
+	return null;
+};
+
+Content.findOneAndUpdate = async function (filter, update, options) {
+	const match = await findOneAcross(filter);
+	if (match) return match.Model.findOneAndUpdate(filter, update, options);
+	return null;
+};
+
+Content.deleteMany = async function (filter = {}) {
+	return Promise.all(ALL_CONTENT_MODELS.map(({ Model }) => Model.deleteMany(filter)));
+};
+
+Content.isSlugTaken = isSlugTaken;
+
+export default Content;

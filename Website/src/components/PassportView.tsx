@@ -85,11 +85,6 @@ export const PassportView: React.FC<PassportViewProps> = ({
                   <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-[#a14009] bg-[#f3f3f3] px-3 py-1 rounded">
                     Registered Heritage Explorer
                   </span>
-                  {user.role && (
-                    <span className="text-[11px] sm:text-xs font-medium text-[#444748] uppercase tracking-wider">
-                      Role: {user.role}
-                    </span>
-                  )}
                 </div>
 
                 <div>

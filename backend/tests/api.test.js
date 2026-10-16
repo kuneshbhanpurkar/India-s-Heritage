@@ -162,8 +162,8 @@ async function runTests() {
 	assert.strictEqual(indoreSections.status, 200);
 	const sectionsList = Array.isArray(indoreSections.data) ? indoreSections.data : indoreSections.data.sections;
 	assert(sectionsList.length >= 5, 'Must have canonical sections');
-	const popularSection = sectionsList.find((s) => s.slug === 'popular-places');
-	assert(popularSection, 'Indore must have popular places section');
+	const popularSection = sectionsList.find((s) => s.slug === 'heritage-places' || s.slug === 'popular-places');
+	assert(popularSection, 'Indore must have popular/heritage places section');
 	console.log('   ✓ Canonical sections returned with city-scoped items');
 
 	// 8. Dynamic Section Content Loading

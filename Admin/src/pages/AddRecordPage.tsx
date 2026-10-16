@@ -51,7 +51,7 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
   const [fullDescription, setFullDescription] = useState<string>(
     editingPlace?.fullDescription || editingPlace?.description || ''
   );
-  const [status, setStatus] = useState<string>(editingPlace?.status || 'Draft (In Curation)');
+  const [status, setStatus] = useState<string>(editingPlace?.status || 'Published');
   const [coverImageUrl, setCoverImageUrl] = useState<string>(editingPlace?.imageUrl || '');
 
   // Category-specific dynamic fields
@@ -97,7 +97,7 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
       setSubtitle(editingPlace.subTitle || '');
       setShortDescription(editingPlace.shortDescription || editingPlace.description || '');
       setFullDescription(editingPlace.fullDescription || editingPlace.description || '');
-      setStatus(editingPlace.status || 'Draft (In Curation)');
+      setStatus(editingPlace.status || 'Published');
       setCoverImageUrl(editingPlace.imageUrl || '');
       setCategoryFields(editingPlace.fields || {});
       setLatitude(editingPlace.latitude !== undefined && editingPlace.latitude !== null ? String(editingPlace.latitude) : '');
@@ -521,9 +521,9 @@ export const AddRecordPage: React.FC<AddRecordPageProps> = ({
                     onChange={(e) => setStatus(e.target.value)}
                     className="w-full px-3 py-2 bg-surface-container-low border border-surface-container rounded-lg text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                   >
+                    <option value="Published">Published &amp; Live</option>
                     <option value="Draft (In Curation)">Draft (In Curation)</option>
                     <option value="Verification Pending">Verification Pending (Review)</option>
-                    <option value="Published">Published &amp; Live</option>
                     <option value="Hidden">Hidden</option>
                   </select>
                 </div>
